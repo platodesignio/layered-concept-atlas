@@ -1,0 +1,30 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { requireAdmin, isAuthUser } from "@/lib/auth";
+
+const schema = z.object({
+  nameJa: z.string().min(1).optional(),
+  descriptionJa: z.string().optional(),
+});
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const admin = await requireAdmin();
+  if (!isAuthUser(admin)) return admin;
+
+  const body = await req.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0]?.message }, { status: 400 });
+  }
+
+  const layer = await prisma.layerDefinition.update({
+    where: { id: params.id },
+    data: parsed.data,
+  });
+
+  return NextResponse.json(layer);
+}

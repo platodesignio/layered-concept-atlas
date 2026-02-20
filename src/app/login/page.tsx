@@ -21,10 +21,8 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "ログインに失敗しました");
-      }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? `ログインに失敗しました (${res.status})`);
       router.push("/");
       router.refresh();
     } catch (e: unknown) {

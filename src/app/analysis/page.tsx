@@ -58,11 +58,11 @@ export default function AnalysisPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "分析に失敗しました");
+        throw new Error(data.error ?? `サーバーエラー (${res.status})`);
       }
-      setResult(await res.json());
+      setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {

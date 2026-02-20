@@ -59,8 +59,8 @@ function CompareInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conceptIds: selected }),
       });
-      if (!res.ok) throw new Error("比較に失敗しました");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `サーバーエラー (${res.status})`);
       setResults(data.results);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");

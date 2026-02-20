@@ -50,8 +50,9 @@ export default function MappingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, fromLayerId, toLayerId }),
       });
-      if (!res.ok) throw new Error("写像に失敗しました");
-      setResult(await res.json());
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `サーバーエラー (${res.status})`);
+      setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {

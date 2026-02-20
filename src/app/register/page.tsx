@@ -22,10 +22,8 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "登録に失敗しました");
-      }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? `登録に失敗しました (${res.status})`);
       router.push("/");
       router.refresh();
     } catch (e: unknown) {

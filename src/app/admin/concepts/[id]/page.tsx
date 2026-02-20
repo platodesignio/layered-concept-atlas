@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Layer = { id: string; slug: string; nameJa: string; index: number };
-type LayerEntry = { id: string; layerId: string; content: string; layer: { slug: string; nameJa: string; index: number } };
+type LayerEntry = { id: string; layerId: string; content: string; layer: { id: string; slug: string; nameJa: string; colorClass: string; index: number } };
 type Concept = {
   id: string; slug: string; titleJa: string; summary: string | null;
   tags: string[]; isPublished: boolean; layerEntries: LayerEntry[];

@@ -18,7 +18,7 @@ type LayerEntry = {
   id: string;
   layerId: string;
   content: string;
-  layer: { slug: string; nameJa: string; index: number };
+  layer: { id: string; slug: string; nameJa: string; colorClass: string; index: number };
 };
 
 type Concept = {

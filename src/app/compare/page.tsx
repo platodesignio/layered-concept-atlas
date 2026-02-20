@@ -16,12 +16,12 @@ const LAYER_NAMES: Record<string, string> = {
 type Concept = { id: string; slug: string; titleJa: string };
 type CompareResult = {
   conceptId: string;
+  slug: string;
   titleJa: string;
-  scores: { layerSlug: string; layerId: string; rawScore: number; normalizedScore: number; matchedTerms: string[] }[];
+  scores: { layerSlug: string; layerId: string; normalizedScore: number; matchedTerms: string[] }[];
   dominantLayer: string;
   crossoverDegree: number;
-  entropy: number;
-  layerEntries: { layerId: string; layer: { slug: string }; content: string }[];
+  layerEntries: { content: string; layer: { slug: string; nameJa: string; index: number } }[];
 };
 
 function CompareInner() {

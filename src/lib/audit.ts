@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export async function createAuditLog(params: {
@@ -14,7 +15,9 @@ export async function createAuditLog(params: {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
-        diff: params.diff ?? undefined,
+        diff: params.diff != null
+          ? (params.diff as Prisma.InputJsonValue)
+          : Prisma.DbNull,
       },
     });
   } catch (e) {

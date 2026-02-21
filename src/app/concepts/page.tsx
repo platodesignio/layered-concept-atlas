@@ -27,7 +27,6 @@ export default function ConceptsPage() {
     const params = new URLSearchParams({
       page: String(page),
       limit: String(LIMIT),
-      published: "true",
     });
     if (q) params.set("q", q);
     fetch(`/api/concepts?${params}`)

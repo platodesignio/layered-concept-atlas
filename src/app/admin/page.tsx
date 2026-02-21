@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 const ADMIN_LINKS = [
@@ -11,11 +12,50 @@ const ADMIN_LINKS = [
 ];
 
 export default function AdminPage() {
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
+
+  async function handleSeed() {
+    setSeeding(true);
+    setSeedResult(null);
+    try {
+      const res = await fetch("/api/admin/seed", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `エラー (${res.status})`);
+      setSeedResult(`完了: 概念 ${data.conceptCount}件 / 辞書 ${data.dictCount}件 / 層 ${data.layerCount}件`);
+    } catch (e: unknown) {
+      setSeedResult(`失敗: ${e instanceof Error ? e.message : "不明なエラー"}`);
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <div className="max-w-4xl mx-auto px-4 py-12">
         <h1 className="text-3xl font-bold text-white mb-2">管理ダッシュボード</h1>
         <p className="text-gray-400 mb-10">Layered Concept Atlas の管理機能</p>
+
+        {/* Seed panel */}
+        <div className="bg-gray-900 border border-yellow-700 rounded-xl p-6 mb-8">
+          <h2 className="text-yellow-400 font-semibold mb-1">🌱 初期データ投入</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            概念・辞書・レイヤー・マッピングルールのサンプルデータをDBに投入します。
+            既存データがある場合はスキップされます。
+          </p>
+          <button
+            onClick={handleSeed}
+            disabled={seeding}
+            className="px-5 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-semibold rounded-lg transition-colors text-sm"
+          >
+            {seeding ? "投入中..." : "シードデータを投入する"}
+          </button>
+          {seedResult && (
+            <p className={`mt-3 text-sm ${seedResult.startsWith("失敗") ? "text-red-400" : "text-green-400"}`}>
+              {seedResult}
+            </p>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {ADMIN_LINKS.map((link) => (

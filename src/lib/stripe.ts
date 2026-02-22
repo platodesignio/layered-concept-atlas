@@ -1,12 +1,25 @@
 import Stripe from "stripe";
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is not set");
+// Lazily validate at runtime (not at build time) so Vercel build doesn't fail
+// when env vars are only set in the production environment.
+function getStripeClient(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error("STRIPE_SECRET_KEY is not set");
+  }
+  return new Stripe(key, {
+    apiVersion: "2026-01-28.clover",
+    typescript: true,
+  });
 }
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-04-10",
-  typescript: true,
+// Use a module-level singleton that is created lazily
+let _stripe: Stripe | null = null;
+export const stripe: Stripe = new Proxy({} as Stripe, {
+  get(_target, prop) {
+    if (!_stripe) _stripe = getStripeClient();
+    return (_stripe as unknown as Record<string | symbol, unknown>)[prop];
+  },
 });
 
 export const PLANS = {

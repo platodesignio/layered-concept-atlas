@@ -61,10 +61,13 @@ export async function POST(req: NextRequest) {
   }));
 
   const results = concepts.map((concept) => {
-    const targetEntries = layerSlug
-      ? concept.layerEntries.filter((e) => e.layer.slug === layerSlug)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const targetEntries: any[] = layerSlug
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? concept.layerEntries.filter((e: any) => e.layer.slug === layerSlug)
       : concept.layerEntries;
-    const combinedText = targetEntries.map((e) => e.content).join(" ");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const combinedText = targetEntries.map((e: any) => e.content).join(" ");
     const analysis = computeLayerScores(combinedText, dictEntries);
 
     return {

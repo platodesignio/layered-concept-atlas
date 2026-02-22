@@ -132,6 +132,16 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const priceId = sub.items.data[0]?.price.id ?? "";
   const plan = planFromPriceId(priceId);
 
+  // Stripe SDK 2024-04-10: current_period_end lives on items in newer types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const subAny = sub as any;
+  const periodEnd: number =
+    subAny.current_period_end ??
+    sub.items.data[0]?.current_period_end ??
+    Math.floor(Date.now() / 1000) + 86400 * 30;
+  const cancelAtPeriodEnd: boolean =
+    subAny.cancel_at_period_end ?? false;
+
   await prisma.$transaction(async (tx) => {
     await tx.subscription.upsert({
       where: { stripeSubscriptionId: sub.id },
@@ -140,8 +150,8 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         stripePriceId: priceId,
         status: sub.status,
         plan: plan as "FREE" | "CREATOR" | "AXIS",
-        currentPeriodEnd: new Date(sub.current_period_end * 1000),
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd,
         updatedAt: new Date(),
       },
       create: {
@@ -150,8 +160,8 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         stripePriceId: priceId,
         status: sub.status,
         plan: plan as "FREE" | "CREATOR" | "AXIS",
-        currentPeriodEnd: new Date(sub.current_period_end * 1000),
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        currentPeriodEnd: new Date(periodEnd * 1000),
+        cancelAtPeriodEnd,
         updatedAt: new Date(),
       },
     });
@@ -194,27 +204,32 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
-  const customerId = invoice.customer as string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inv = invoice as any;
+  const customerId = inv.customer as string;
   const userId = await getUserIdFromCustomer(customerId);
   if (!userId) return;
 
-  // Ensure status is active after successful payment
-  if (invoice.subscription) {
+  const subscriptionId: string | null = inv.subscription ?? null;
+  if (subscriptionId) {
     await prisma.subscription.updateMany({
-      where: { stripeSubscriptionId: invoice.subscription as string },
+      where: { stripeSubscriptionId: subscriptionId },
       data: { status: "active", updatedAt: new Date() },
     });
   }
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
-  const customerId = invoice.customer as string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inv = invoice as any;
+  const customerId = inv.customer as string;
   const userId = await getUserIdFromCustomer(customerId);
   if (!userId) return;
 
-  if (invoice.subscription) {
+  const subscriptionId: string | null = inv.subscription ?? null;
+  if (subscriptionId) {
     await prisma.subscription.updateMany({
-      where: { stripeSubscriptionId: invoice.subscription as string },
+      where: { stripeSubscriptionId: subscriptionId },
       data: { status: "past_due", updatedAt: new Date() },
     });
   }
@@ -223,7 +238,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     userId,
     action: "PAYMENT_FAILED",
     entityType: "Billing",
-    entityId: String(invoice.subscription ?? invoice.id),
-    diff: { invoiceId: invoice.id },
+    entityId: String(subscriptionId ?? inv.id),
+    diff: { invoiceId: inv.id },
   });
 }

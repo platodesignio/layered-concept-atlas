@@ -6,6 +6,8 @@ import { computeLayerScores, DictEntry } from "@/lib/engine/scorer";
 import { generateHighlightSpans } from "@/lib/engine/highlighter";
 import { createHash } from "@/lib/utils";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { getCurrentUser } from "@/lib/auth";
+import { can } from "@/lib/authz";
 
 const schema = z.object({
   text: z.string().min(1).max(5000),
@@ -25,11 +27,19 @@ export async function POST(req: NextRequest) {
     const { text } = parsed.data;
     const inputHash = createHash(text);
 
-    // Check cache (skip if table doesn't exist yet)
+    // Determine if user can persist runs
+    const user = await getCurrentUser();
+    const canPersist = user ? await can(user.id, "run:persist") : false;
+
+    // Check cache (only for users who can persist, or anonymous session cache)
     let cached = null;
     try {
       cached = await prisma.run.findFirst({
-        where: { inputHash, runType: "analysis" },
+        where: {
+          inputHash,
+          runType: "analysis",
+          ...(canPersist ? { userId: user!.id } : { userId: null }),
+        },
         include: { artifacts: true },
         orderBy: { createdAt: "desc" },
       });
@@ -44,10 +54,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ runId: cached.id, cached: true, ...result });
     }
 
-    // Load dictionary (skip if table doesn't exist yet)
+    // Load dictionary
     let terms: { term: string; weight: number; isNegation: boolean; layerId: string; layer: { slug: string } }[] = [];
     try {
+      // SYSTEM terms always included; USER terms for Axis users
+      const canUserDict = user ? await can(user.id, "dictionary:write") : false;
+      const scopeFilter = canUserDict && user
+        ? { OR: [{ scope: "SYSTEM" }, { scope: "USER", userId: user.id }] }
+        : { scope: "SYSTEM" };
+
       terms = await prisma.dictionaryTerm.findMany({
+        where: scopeFilter as Record<string, unknown>,
         include: { layer: { select: { slug: true } } },
       });
     } catch {
@@ -82,34 +99,38 @@ export async function POST(req: NextRequest) {
     );
     const highlights = generateHighlightSpans(text, matchedTerms);
 
-    // Persist run (skip if table doesn't exist yet)
+    // Persist run only if user has run:persist capability
     let runId = "no-db";
-    try {
-      const run = await prisma.run.create({
-        data: {
-          runType: "analysis",
-          inputHash,
-          artifacts: {
-            create: [
-              { key: "scores", value: analysisResult.scores as unknown as object },
-              { key: "dominantLayer", value: analysisResult.dominantLayer },
-              { key: "crossoverDegree", value: analysisResult.crossoverDegree },
-              { key: "entropy", value: analysisResult.entropy },
-              { key: "decompositionHints", value: analysisResult.decompositionHints as unknown as object },
-              { key: "highlights", value: highlights as unknown as object },
-              { key: "inputText", value: text },
-            ],
+    if (canPersist && user) {
+      try {
+        const run = await prisma.run.create({
+          data: {
+            runType: "analysis",
+            inputHash,
+            userId: user.id,
+            artifacts: {
+              create: [
+                { key: "scores", value: analysisResult.scores as unknown as object },
+                { key: "dominantLayer", value: analysisResult.dominantLayer },
+                { key: "crossoverDegree", value: analysisResult.crossoverDegree },
+                { key: "entropy", value: analysisResult.entropy },
+                { key: "decompositionHints", value: analysisResult.decompositionHints as unknown as object },
+                { key: "highlights", value: highlights as unknown as object },
+                { key: "inputText", value: text },
+              ],
+            },
           },
-        },
-      });
-      runId = run.id;
-    } catch {
-      // runs table not yet created – skip persistence
+        });
+        runId = run.id;
+      } catch {
+        // Silently skip if persistence fails
+      }
     }
 
     return NextResponse.json({
       runId,
       cached: false,
+      persisted: canPersist,
       scores: analysisResult.scores,
       dominantLayer: analysisResult.dominantLayer,
       crossoverDegree: analysisResult.crossoverDegree,

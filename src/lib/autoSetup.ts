@@ -189,6 +189,83 @@ async function runMigration() {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "assertion_tests_pkey" PRIMARY KEY ("id")
     )`,
+    // --- Stripe Billing tables ---
+    `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'Plan') THEN CREATE TYPE "Plan" AS ENUM ('FREE', 'CREATOR', 'AXIS'); END IF; END $$`,
+    `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'TermScope') THEN CREATE TYPE "TermScope" AS ENUM ('SYSTEM', 'USER'); END IF; END $$`,
+    `CREATE TABLE IF NOT EXISTS "stripe_customers" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "stripeCustomerId" TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "stripe_customers_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "stripe_customers_userId_key" ON "stripe_customers"("userId")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "stripe_customers_stripeCustomerId_key" ON "stripe_customers"("stripeCustomerId")`,
+    `CREATE TABLE IF NOT EXISTS "subscriptions" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "stripeSubscriptionId" TEXT NOT NULL,
+      "stripePriceId" TEXT NOT NULL,
+      "status" TEXT NOT NULL,
+      "plan" TEXT NOT NULL DEFAULT 'FREE',
+      "currentPeriodEnd" TIMESTAMP(3) NOT NULL,
+      "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "subscriptions_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "subscriptions_userId_key" ON "subscriptions"("userId")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "subscriptions_stripeSubscriptionId_key" ON "subscriptions"("stripeSubscriptionId")`,
+    `CREATE TABLE IF NOT EXISTS "entitlements" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "capabilities" TEXT[] DEFAULT ARRAY[]::TEXT[],
+      "source" TEXT NOT NULL DEFAULT 'system',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "entitlements_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "entitlements_userId_key" ON "entitlements"("userId")`,
+    `CREATE TABLE IF NOT EXISTS "billing_events" (
+      "id" TEXT NOT NULL,
+      "stripeEventId" TEXT NOT NULL,
+      "type" TEXT NOT NULL,
+      "payloadJson" JSONB NOT NULL,
+      "processedAt" TIMESTAMP(3),
+      "processResult" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "billing_events_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "billing_events_stripeEventId_key" ON "billing_events"("stripeEventId")`,
+    `CREATE TABLE IF NOT EXISTS "concept_packs" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "description" TEXT,
+      "isPublic" BOOLEAN NOT NULL DEFAULT false,
+      "version" INTEGER NOT NULL DEFAULT 1,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "concept_packs_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "concept_packs_userId_idx" ON "concept_packs"("userId")`,
+    `CREATE TABLE IF NOT EXISTS "concept_pack_items" (
+      "id" TEXT NOT NULL,
+      "packId" TEXT NOT NULL,
+      "conceptId" TEXT NOT NULL,
+      "order" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "concept_pack_items_pkey" PRIMARY KEY ("id")
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "concept_pack_items_packId_conceptId_key" ON "concept_pack_items"("packId", "conceptId")`,
+    // Add new columns to existing tables (ignore if already exists)
+    `ALTER TABLE "runs" ADD COLUMN IF NOT EXISTS "userId" TEXT`,
+    `ALTER TABLE "dictionary_terms" ADD COLUMN IF NOT EXISTS "scope" TEXT NOT NULL DEFAULT 'SYSTEM'`,
+    `ALTER TABLE "dictionary_terms" ADD COLUMN IF NOT EXISTS "userId" TEXT`,
+    `ALTER TABLE "mapping_rules" ADD COLUMN IF NOT EXISTS "scope" TEXT NOT NULL DEFAULT 'SYSTEM'`,
+    `ALTER TABLE "mapping_rules" ADD COLUMN IF NOT EXISTS "userId" TEXT`,
+    `ALTER TABLE "concepts" ADD COLUMN IF NOT EXISTS "ownerId" TEXT`,
+    `ALTER TABLE "feedbacks" ADD COLUMN IF NOT EXISTS "pagePath" TEXT`,
   ];
 
   for (const stmt of stmts) {
@@ -202,6 +279,12 @@ async function runMigration() {
     `DO $$ BEGIN ALTER TABLE "layer_entries" ADD CONSTRAINT "layer_entries_conceptId_fkey" FOREIGN KEY ("conceptId") REFERENCES "concepts"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
     `DO $$ BEGIN ALTER TABLE "layer_entries" ADD CONSTRAINT "layer_entries_layerId_fkey" FOREIGN KEY ("layerId") REFERENCES "layer_definitions"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
     `DO $$ BEGIN ALTER TABLE "run_artifacts" ADD CONSTRAINT "run_artifacts_runId_fkey" FOREIGN KEY ("runId") REFERENCES "runs"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "stripe_customers" ADD CONSTRAINT "stripe_customers_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "entitlements" ADD CONSTRAINT "entitlements_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "concept_packs" ADD CONSTRAINT "concept_packs_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "concept_pack_items" ADD CONSTRAINT "concept_pack_items_packId_fkey" FOREIGN KEY ("packId") REFERENCES "concept_packs"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+    `DO $$ BEGIN ALTER TABLE "concept_pack_items" ADD CONSTRAINT "concept_pack_items_conceptId_fkey" FOREIGN KEY ("conceptId") REFERENCES "concepts"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
   ];
   for (const fk of fks) {
     await prisma.$executeRawUnsafe(fk).catch(() => {});

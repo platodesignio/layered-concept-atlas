@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Plan enum ───────────────────────────────────────────────────────────────
+enum Plan {
+  FREE
+  CREATOR
+  AXIS
+}
+
+// ─── Scope enum for dictionary/mapping ───────────────────────────────────────
+enum TermScope {
+  SYSTEM
+  USER
+}
+
+// ─── Core auth ───────────────────────────────────────────────────────────────
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -15,9 +29,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions  Session[]
-  feedbacks Feedback[]
-  auditLogs AuditLog[]
+  sessions      Session[]
+  feedbacks     Feedback[]
+  auditLogs     AuditLog[]
+  customer      StripeCustomer?
+  subscription  Subscription?
+  entitlement   Entitlement?
+  conceptPacks  ConceptPack[]
+  userTerms     DictionaryTerm[]  @relation("UserTerms")
+  userRules     MappingRule[]     @relation("UserRules")
+  runs          Run[]
 
   @@map("users")
 }
@@ -35,18 +56,19 @@ model Session {
   @@map("sessions")
 }
 
+// ─── Layer / Dictionary / Mapping ────────────────────────────────────────────
 model LayerDefinition {
-  id          String   @id @default(cuid())
-  index       Int      @unique
-  slug        String   @unique
-  nameJa      String
+  id            String   @id @default(cuid())
+  index         Int      @unique
+  slug          String   @unique
+  nameJa        String
   descriptionJa String
-  colorClass  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  colorClass    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  layerEntries  LayerEntry[]
-  dictionaryTerms DictionaryTerm[]
+  layerEntries     LayerEntry[]
+  dictionaryTerms  DictionaryTerm[]
   mappingRulesFrom MappingRule[] @relation("FromLayer")
   mappingRulesTo   MappingRule[] @relation("ToLayer")
 
@@ -54,39 +76,48 @@ model LayerDefinition {
 }
 
 model DictionaryTerm {
-  id          String   @id @default(cuid())
-  layerId     String
-  term        String
-  weight      Float    @default(1.0)
-  isNegation  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  layerId    String
+  term       String
+  weight     Float     @default(1.0)
+  isNegation Boolean   @default(false)
+  scope      TermScope @default(SYSTEM)
+  userId     String?   // null = system scope
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   layer LayerDefinition @relation(fields: [layerId], references: [id])
+  user  User?           @relation("UserTerms", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([layerId])
+  @@index([userId])
   @@map("dictionary_terms")
 }
 
 model MappingRule {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   fromLayerId String
   toLayerId   String
   pattern     String
   replacement String
   condition   String?
-  priority    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  priority    Int       @default(0)
+  scope       TermScope @default(SYSTEM)
+  userId      String?   // null = system scope
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   fromLayer LayerDefinition @relation("FromLayer", fields: [fromLayerId], references: [id])
   toLayer   LayerDefinition @relation("ToLayer",   fields: [toLayerId],   references: [id])
+  user      User?           @relation("UserRules", fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([fromLayerId])
   @@index([toLayerId])
+  @@index([userId])
   @@map("mapping_rules")
 }
 
+// ─── Concepts ────────────────────────────────────────────────────────────────
 model Concept {
   id          String   @id @default(cuid())
   slug        String   @unique
@@ -94,14 +125,17 @@ model Concept {
   summary     String?
   tags        String[]
   isPublished Boolean  @default(false)
+  ownerId     String?  // null = system concept
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  layerEntries LayerEntry[]
-  linksFrom    ConceptLink[] @relation("LinkFrom")
-  linksTo      ConceptLink[] @relation("LinkTo")
-  auditLogs    AuditLog[]
+  layerEntries    LayerEntry[]
+  linksFrom       ConceptLink[]    @relation("LinkFrom")
+  linksTo         ConceptLink[]    @relation("LinkTo")
+  auditLogs       AuditLog[]
+  conceptPackItems ConceptPackItem[]
 
+  @@index([ownerId])
   @@map("concepts")
 }
 
@@ -123,11 +157,11 @@ model LayerEntry {
 }
 
 model ConceptLink {
-  id         String   @id @default(cuid())
-  fromId     String
-  toId       String
-  relation   String
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  relation  String
+  createdAt DateTime @default(now())
 
   from Concept @relation("LinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
   to   Concept @relation("LinkTo",   fields: [toId],   references: [id], onDelete: Cascade)
@@ -136,27 +170,50 @@ model ConceptLink {
   @@map("concept_links")
 }
 
-model AssertionTest {
-  id          String   @id @default(cuid())
-  name        String
-  inputText   String
-  expectedLayer String
-  expectedMinScore Float
-  createdAt   DateTime @default(now())
+// ─── Concept Packs (Creator+) ─────────────────────────────────────────────────
+model ConceptPack {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  visibility String   @default("private") // private | public (future)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  @@map("assertion_tests")
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ConceptPackItem[]
+
+  @@index([userId])
+  @@map("concept_packs")
 }
 
+model ConceptPackItem {
+  id        String   @id @default(cuid())
+  packId    String
+  conceptId String
+  createdAt DateTime @default(now())
+
+  pack    ConceptPack @relation(fields: [packId],    references: [id], onDelete: Cascade)
+  concept Concept     @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, conceptId])
+  @@map("concept_pack_items")
+}
+
+// ─── Runs ─────────────────────────────────────────────────────────────────────
 model Run {
   id        String   @id @default(cuid())
   runType   String
   inputHash String
+  userId    String?  // null = anonymous / free user (ephemeral)
   createdAt DateTime @default(now())
 
+  user      User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   artifacts RunArtifact[]
   feedbacks Feedback[]
 
   @@index([inputHash])
+  @@index([userId])
   @@map("runs")
 }
 
@@ -173,12 +230,80 @@ model RunArtifact {
   @@map("run_artifacts")
 }
 
+// ─── Billing ──────────────────────────────────────────────────────────────────
+model StripeCustomer {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("stripe_customers")
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  stripeSubscriptionId String   @unique
+  stripePriceId        String
+  status               String   // active | past_due | canceled | incomplete | trialing
+  plan                 Plan     @default(FREE)
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Entitlement {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  capabilities String[] // e.g. ["concept:write","run:persist",...]
+  source       String   @default("system") // system | subscription | admin
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("entitlements")
+}
+
+model BillingEvent {
+  id            String    @id @default(cuid())
+  stripeEventId String    @unique
+  type          String
+  payloadJson   Json
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  processResult String?   // ok | error:...
+
+  @@index([stripeEventId])
+  @@map("billing_events")
+}
+
+// ─── Misc ─────────────────────────────────────────────────────────────────────
+model AssertionTest {
+  id               String   @id @default(cuid())
+  name             String
+  inputText        String
+  expectedLayer    String
+  expectedMinScore Float
+  createdAt        DateTime @default(now())
+
+  @@map("assertion_tests")
+}
+
 model Feedback {
   id        String   @id @default(cuid())
   runId     String?
   userId    String?
   rating    Int
   comment   String?
+  pagePath  String?
   createdAt DateTime @default(now())
 
   run  Run?  @relation(fields: [runId],  references: [id])
@@ -197,7 +322,7 @@ model AuditLog {
   diff       Json?
   createdAt  DateTime @default(now())
 
-  user    User?    @relation(fields: [userId], references: [id])
+  user    User?    @relation(fields: [userId],   references: [id])
   concept Concept? @relation(fields: [entityId], references: [id], map: "audit_concept_fk")
 
   @@index([entityType, entityId])

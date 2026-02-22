@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Moon, Sun, Menu, X, Layers } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { CurrentPlanBadge } from "@/components/billing/CurrentPlanBadge";
 import { cn } from "@/lib/utils";
 
 interface HeaderUser {
@@ -107,6 +108,8 @@ export function Header() {
           </button>
           {user ? (
             <div className="hidden md:flex items-center gap-2">
+              {/* Plan badge – only shown when logged in */}
+              <CurrentPlanBadge />
               <span className="text-sm text-gray-600 dark:text-gray-400">{user.name ?? user.email}</span>
               <Button variant="ghost" size="sm" onClick={logout}>ログアウト</Button>
             </div>
@@ -141,6 +144,11 @@ export function Header() {
           ))}
           {user?.isAdmin && (
             <Link href="/admin" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-sm text-gray-700 dark:text-gray-300">管理</Link>
+          )}
+          {user && (
+            <Link href="/billing" onClick={() => setMenuOpen(false)} className="block px-3 py-2 rounded-md text-sm text-gray-700 dark:text-gray-300">
+              プラン・課金
+            </Link>
           )}
           <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex gap-2">
             {user ? (

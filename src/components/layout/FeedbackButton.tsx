@@ -1,99 +1,111 @@
 "use client";
 
-import { useState } from "react";
-import { MessageSquarePlus } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/Textarea";
-import { useToast } from "@/components/ui/Toast";
-import { cn } from "@/lib/utils";
+import { useState, useCallback } from "react";
+import { usePathname } from "next/navigation";
 
-interface FeedbackButtonProps {
-  runId?: string;
+let executionId = crypto.randomUUID();
+const operationHistory: string[] = [];
+
+export function trackOperation(op: string) {
+  operationHistory.push(op);
+  if (operationHistory.length > 10) operationHistory.shift();
 }
 
-export function FeedbackButton({ runId }: FeedbackButtonProps) {
-  const [open, setOpen] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState("");
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
+export function refreshExecutionId() {
+  executionId = crypto.randomUUID();
+}
 
-  const submit = async () => {
-    if (rating === 0) {
-      toast("評価を選択してください", "error");
-      return;
-    }
-    setLoading(true);
+export function FeedbackButton() {
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(3);
+  const [comment, setComment] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const pathname = usePathname();
+
+  const submit = useCallback(async () => {
+    setSending(true);
     try {
-      const res = await fetch("/api/feedback", {
+      await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId, rating, comment: comment.trim() || undefined }),
+        body: JSON.stringify({
+          executionId,
+          rating,
+          comment,
+          pagePath: pathname,
+          url: window.location.href,
+          context: {
+            operationHistory: [...operationHistory],
+            walletConnected: false,
+          },
+        }),
       });
-      if (res.ok) {
-        toast("フィードバックを送信しました", "success");
-        setOpen(false);
-        setRating(0);
-        setComment("");
-      } else {
-        const err = await res.json();
-        toast(err.error ?? "送信に失敗しました", "error");
-      }
+      setSent(true);
+      setComment("");
+      setTimeout(() => { setSent(false); setOpen(false); }, 2000);
     } finally {
-      setLoading(false);
+      setSending(false);
     }
-  };
+  }, [rating, comment, pathname]);
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        className={cn(
-          "fixed bottom-6 right-6 z-20",
-          "flex items-center gap-2 rounded-full px-4 py-2",
-          "bg-violet-600 text-white shadow-lg hover:bg-violet-700 transition-colors",
-          "text-sm font-medium"
-        )}
+        className="fixed bottom-4 right-4 z-50 border border-black bg-white px-3 py-1 text-sm"
       >
-        <MessageSquarePlus className="h-4 w-4" />
-        <span className="hidden sm:inline">フィードバック</span>
+        フィードバック
       </button>
-
-      <Modal open={open} onClose={() => setOpen(false)} title="フィードバックを送信">
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">評価</p>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setRating(n)}
-                  className={cn(
-                    "w-10 h-10 rounded-full text-sm font-bold transition-colors",
-                    rating >= n
-                      ? "bg-violet-600 text-white"
-                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-                  )}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Textarea
-            label="コメント（任意）"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="ご意見・ご感想をお聞かせください"
-            rows={3}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)}>キャンセル</Button>
-            <Button onClick={submit} loading={loading}>送信</Button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white border border-black p-6 w-full max-w-sm">
+            <h3 className="font-bold mb-4">フィードバックを送る</h3>
+            {sent ? (
+              <p>送信しました。</p>
+            ) : (
+              <>
+                <div className="mb-3">
+                  <label className="block text-sm mb-1">評価 (1〜5)</label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setRating(n)}
+                        className={`w-8 h-8 border ${rating === n ? "bg-black text-white" : "border-black"}`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <label className="block text-sm mb-1">コメント（任意）</label>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    className="w-full border border-black p-2 text-sm"
+                    rows={4}
+                    maxLength={2000}
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setOpen(false)} className="px-4 py-1 border border-black text-sm">
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={submit}
+                    disabled={sending}
+                    className="px-4 py-1 bg-black text-white text-sm disabled:opacity-50"
+                  >
+                    {sending ? "送信中..." : "送信"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </Modal>
+      )}
     </>
   );
 }

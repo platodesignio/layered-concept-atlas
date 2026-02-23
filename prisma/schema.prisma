@@ -7,230 +7,469 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Plan enum ───────────────────────────────────────────────────────────────
-enum Plan {
-  FREE
-  CREATOR
-  AXIS
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  VIEWER
+  MEMBER
+  EDITOR
+  PROJECT_OWNER
+  NETWORK_ADMIN
 }
 
-// ─── Scope enum for dictionary/mapping ───────────────────────────────────────
-enum TermScope {
-  SYSTEM
+enum Visibility {
+  PROJECT_ONLY
+  NETWORK_ONLY
+  LINK_ONLY
+  PUBLIC
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  BLOCKED
+  CANCELLED
+}
+
+enum TimelineEventKind {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  STPF_NODE_CREATED
+  STPF_NODE_UPDATED
+  REPORT_PUBLISHED
+  VOTE_CAST
+  SUPPORT_ONCHAIN
+  SUPPORT_STRIPE
+  FRIEND_ACCEPTED
+  FOLLOW_ADDED
+  COMMENT_ADDED
+  REPORT_REVISED
+}
+
+enum TimelineVisibility {
+  PUBLIC
+  NETWORK_ONLY
+  FRIENDS_ONLY
+  PRIVATE
+}
+
+enum ReportStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  REJECTED
+}
+
+enum SiweStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  USED
+}
+
+enum FlagTargetType {
+  PROJECT
+  REPORT
+  COMMENT
   USER
+  EXTERNAL_LINK
+  DM_MESSAGE
 }
 
-// ─── Core auth ───────────────────────────────────────────────────────────────
+enum FlagStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+enum SupportKind {
+  STRIPE_MEMBERSHIP
+  ONCHAIN_ETH
+}
+
+enum StpfType {
+  STRUCTURE_ANALYSIS
+  THEORY_NODE
+  PAPER
+  FIELD_IMPLEMENTATION
+}
+
+// ─── User & Auth ──────────────────────────────────────────────────────────────
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerified   DateTime?
+  name            String?
+  displayName     String?
+  bio             String?
+  role            Role      @default(MEMBER)
+  isFrozen        Boolean   @default(false)
+  frozenAt        DateTime?
+  frozenReason    String?
+  walletAddress   String?   @unique
+  avatarUrl       String?
+  // Privacy settings
+  friendListPublic    Boolean @default(false)
+  timelineVisibility  TimelineVisibility @default(FRIENDS_ONLY)
+  dmFromFriendsOnly   Boolean @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  sessions      Session[]
-  feedbacks     Feedback[]
-  auditLogs     AuditLog[]
-  customer      StripeCustomer?
-  subscription  Subscription?
-  entitlement   Entitlement?
-  conceptPacks  ConceptPack[]
-  userTerms     DictionaryTerm[]  @relation("UserTerms")
-  userRules     MappingRule[]     @relation("UserRules")
-  runs          Run[]
+  accounts        Account[]
+  sessions        Session[]
+  auditLogs       AuditLog[]          @relation("UserAuditLogs")
+  projects        Project[]           @relation("ProjectOwner")
+  memberships     ProjectMember[]
+  stpfNodes       StpfNode[]
+  reports         Report[]
+  reportVersions  ReportVersion[]
+  votes           Vote[]
+  supports        Support[]
+  sentRequests    FriendRequest[]     @relation("SentRequests")
+  receivedRequests FriendRequest[]    @relation("ReceivedRequests")
+  friendshipsA    Friendship[]        @relation("FriendA")
+  friendshipsB    Friendship[]        @relation("FriendB")
+  blocksInitiated Block[]             @relation("BlockerUser")
+  blocksReceived  Block[]             @relation("BlockedUser")
+  conversations   ConversationParticipant[]
+  messages        Message[]
+  timelineEvents  TimelineEvent[]
+  follows         Follow[]
+  feedbacks       Feedback[]
+  flags           Flag[]
+  comments        Comment[]
+  notifications   Notification[]
+  walletConnections WalletConnection[]
+  siweNonces      SiweNonce[]
+  stripeCustomer  StripeCustomer?
+  networkMembership NetworkMembership?
+  supporterBadges SupporterBadge[]
 
+  @@index([email])
+  @@index([walletAddress])
   @@map("users")
 }
 
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("sessions")
 }
 
-// ─── Layer / Dictionary / Mapping ────────────────────────────────────────────
-model LayerDefinition {
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── SIWE ────────────────────────────────────────────────────────────────────
+
+model SiweNonce {
+  id        String     @id @default(cuid())
+  nonce     String     @unique
+  userId    String?
+  status    SiweStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+  usedAt    DateTime?
+  purpose   String     @default("wallet_connect")
+  targetId  String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([nonce])
+  @@index([expiresAt])
+  @@map("siwe_nonces")
+}
+
+// ─── Wallet ───────────────────────────────────────────────────────────────────
+
+model WalletConnection {
   id            String   @id @default(cuid())
-  index         Int      @unique
-  slug          String   @unique
-  nameJa        String
-  descriptionJa String
-  colorClass    String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  userId        String
+  address       String
+  chainId       Int
+  verifiedAt    DateTime @default(now())
+  lastSignedAt  DateTime @default(now())
 
-  layerEntries     LayerEntry[]
-  dictionaryTerms  DictionaryTerm[]
-  mappingRulesFrom MappingRule[] @relation("FromLayer")
-  mappingRulesTo   MappingRule[] @relation("ToLayer")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("layer_definitions")
-}
-
-model DictionaryTerm {
-  id         String    @id @default(cuid())
-  layerId    String
-  term       String
-  weight     Float     @default(1.0)
-  isNegation Boolean   @default(false)
-  scope      TermScope @default(SYSTEM)
-  userId     String?   // null = system scope
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  layer LayerDefinition @relation(fields: [layerId], references: [id])
-  user  User?           @relation("UserTerms", fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([layerId])
+  @@unique([userId, address])
   @@index([userId])
-  @@map("dictionary_terms")
+  @@map("wallet_connections")
 }
 
-model MappingRule {
-  id          String    @id @default(cuid())
-  fromLayerId String
-  toLayerId   String
-  pattern     String
-  replacement String
-  condition   String?
-  priority    Int       @default(0)
-  scope       TermScope @default(SYSTEM)
-  userId      String?   // null = system scope
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+// ─── Project ─────────────────────────────────────────────────────────────────
 
-  fromLayer LayerDefinition @relation("FromLayer", fields: [fromLayerId], references: [id])
-  toLayer   LayerDefinition @relation("ToLayer",   fields: [toLayerId],   references: [id])
-  user      User?           @relation("UserRules", fields: [userId], references: [id], onDelete: Cascade)
+model Project {
+  id              String     @id @default(cuid())
+  slug            String     @unique
+  title           String
+  description     String
+  tags            String[]
+  visibility      Visibility @default(NETWORK_ONLY)
+  isFrozen        Boolean    @default(false)
+  frozenAt        DateTime?
+  frozenReason    String?
+  ownerId         String
+  receiptAddress  String?    // ETH wallet for onchain donations
+  searchVector    Unsupported("tsvector")?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
-  @@index([fromLayerId])
-  @@index([toLayerId])
-  @@index([userId])
-  @@map("mapping_rules")
-}
-
-// ─── Concepts ────────────────────────────────────────────────────────────────
-model Concept {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  titleJa     String
-  summary     String?
-  tags        String[]
-  isPublished Boolean  @default(false)
-  ownerId     String?  // null = system concept
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  layerEntries    LayerEntry[]
-  linksFrom       ConceptLink[]    @relation("LinkFrom")
-  linksTo         ConceptLink[]    @relation("LinkTo")
-  auditLogs       AuditLog[]
-  conceptPackItems ConceptPackItem[]
+  owner           User             @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members         ProjectMember[]
+  stpfNodes       StpfNode[]
+  reports         Report[]
+  votes           Vote[]
+  supports        Support[]
+  flags           Flag[]
+  timelineEvents  TimelineEvent[]
+  follows         Follow[]
+  comments        Comment[]
+  auditLogs       AuditLog[]       @relation("ProjectAuditLogs")
+  supporterBadges SupporterBadge[]
 
   @@index([ownerId])
-  @@map("concepts")
+  @@index([visibility])
+  @@map("projects")
 }
 
-model LayerEntry {
+model ProjectMember {
   id        String   @id @default(cuid())
-  conceptId String
-  layerId   String
-  content   String
+  projectId String
+  userId    String
+  role      Role     @default(MEMBER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  concept Concept         @relation(fields: [conceptId], references: [id], onDelete: Cascade)
-  layer   LayerDefinition @relation(fields: [layerId],   references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([conceptId, layerId])
-  @@index([conceptId])
-  @@index([layerId])
-  @@map("layer_entries")
+  @@unique([projectId, userId])
+  @@map("project_members")
 }
 
-model ConceptLink {
-  id        String   @id @default(cuid())
-  fromId    String
-  toId      String
-  relation  String
-  createdAt DateTime @default(now())
+// ─── STPF Nodes ──────────────────────────────────────────────────────────────
 
-  from Concept @relation("LinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
-  to   Concept @relation("LinkTo",   fields: [toId],   references: [id], onDelete: Cascade)
+model StpfNode {
+  id          String   @id @default(cuid())
+  projectId   String
+  type        StpfType
+  title       String
+  content     Json     // type-specific fields stored as JSON
+  authorId    String
+  searchVector Unsupported("tsvector")?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  @@unique([fromId, toId, relation])
-  @@map("concept_links")
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author      User       @relation(fields: [authorId], references: [id])
+  linksFrom   StpfLink[] @relation("LinkFrom")
+  linksTo     StpfLink[] @relation("LinkTo")
+  reportItems ReportStpfItem[]
+
+  @@index([projectId])
+  @@index([type])
+  @@map("stpf_nodes")
 }
 
-// ─── Concept Packs (Creator+) ─────────────────────────────────────────────────
-model ConceptPack {
+model StpfLink {
+  id          String   @id @default(cuid())
+  fromNodeId  String
+  toNodeId    String
+  linkType    String   // derived_from | validates | implements | observes
+  description String?
+  createdAt   DateTime @default(now())
+
+  fromNode StpfNode @relation("LinkFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   StpfNode @relation("LinkTo",   fields: [toNodeId],   references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId, linkType])
+  @@map("stpf_links")
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+
+model Report {
+  id              String       @id @default(cuid())
+  projectId       String
+  authorId        String
+  approverId      String?
+  status          ReportStatus @default(DRAFT)
+  visibility      Visibility   @default(PROJECT_ONLY)
+  periodFrom      DateTime
+  periodTo        DateTime
+  outcomes        String
+  progress        String
+  issues          String
+  risks           String
+  nextActions     String
+  supportNeeds    Json         // { type: string, description: string }[]
+  externalLinks   String[]
+  collaborators   String[]
+  revisionReason  String?
+  publishedAt     DateTime?
+  rejectedAt      DateTime?
+  rejectedReason  String?
+  parentReportId  String?      // for revised versions
+  versionNumber   Int          @default(1)
+  searchVector    Unsupported("tsvector")?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id])
+  stpfItems     ReportStpfItem[]
+  versions      ReportVersion[]
+  flags         Flag[]
+  comments      Comment[]
+  timelineEvents TimelineEvent[]
+
+  @@index([projectId])
+  @@index([authorId])
+  @@index([status])
+  @@map("reports")
+}
+
+model ReportVersion {
+  id             String       @id @default(cuid())
+  reportId       String
+  versionNumber  Int
+  snapshotJson   Json
+  revisionReason String
+  createdById    String
+  createdAt      DateTime     @default(now())
+
+  report     Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  createdBy  User   @relation(fields: [createdById], references: [id])
+
+  @@index([reportId])
+  @@map("report_versions")
+}
+
+model ReportStpfItem {
   id         String   @id @default(cuid())
-  userId     String
-  name       String
-  visibility String   @default("private") // private | public (future)
-  version    Int      @default(1)
+  reportId   String
+  stpfNodeId String
+  action     String   // what was done to/with this node in this report period
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
-  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items ConceptPackItem[]
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  stpfNode  StpfNode @relation(fields: [stpfNodeId], references: [id], onDelete: Cascade)
 
+  @@unique([reportId, stpfNodeId])
+  @@map("report_stpf_items")
+}
+
+// ─── Comments ─────────────────────────────────────────────────────────────────
+
+model Comment {
+  id         String     @id @default(cuid())
+  authorId   String
+  projectId  String?
+  reportId   String?
+  content    String
+  isDeleted  Boolean    @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  author  User     @relation(fields: [authorId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report  Report?  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  flags   Flag[]
+
+  @@index([projectId])
+  @@index([reportId])
+  @@map("comments")
+}
+
+// ─── Votes ────────────────────────────────────────────────────────────────────
+
+model Vote {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  value     Int      @default(1) // always 1; unique constraint prevents double
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("votes")
+}
+
+// ─── Support ──────────────────────────────────────────────────────────────────
+
+model Support {
+  id          String      @id @default(cuid())
+  projectId   String
+  userId      String
+  kind        SupportKind
+  amountWei   String?     // for onchain
+  txHash      String?     // for onchain
+  chainId     Int?        // for onchain
+  stripePaymentIntentId String? // for stripe
+  confirmedAt DateTime?
+  createdAt   DateTime    @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge   SupporterBadge?
+
+  @@index([projectId])
   @@index([userId])
-  @@map("concept_packs")
+  @@map("supports")
 }
 
-model ConceptPackItem {
+model SupporterBadge {
   id        String   @id @default(cuid())
-  packId    String
-  conceptId String
-  createdAt DateTime @default(now())
+  supportId String   @unique
+  userId    String
+  projectId String
+  issuedAt  DateTime @default(now())
 
-  pack    ConceptPack @relation(fields: [packId],    references: [id], onDelete: Cascade)
-  concept Concept     @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  support Support @relation(fields: [supportId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([packId, conceptId])
-  @@map("concept_pack_items")
+  @@map("supporter_badges")
 }
 
-// ─── Runs ─────────────────────────────────────────────────────────────────────
-model Run {
-  id        String   @id @default(cuid())
-  runType   String
-  inputHash String
-  userId    String?  // null = anonymous / free user (ephemeral)
-  createdAt DateTime @default(now())
+// ─── Stripe ───────────────────────────────────────────────────────────────────
 
-  user      User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  artifacts RunArtifact[]
-  feedbacks Feedback[]
-
-  @@index([inputHash])
-  @@index([userId])
-  @@map("runs")
-}
-
-model RunArtifact {
-  id        String   @id @default(cuid())
-  runId     String
-  key       String
-  value     Json
-  createdAt DateTime @default(now())
-
-  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  @@unique([runId, key])
-  @@map("run_artifacts")
-}
-
-// ─── Billing ──────────────────────────────────────────────────────────────────
 model StripeCustomer {
   id               String   @id @default(cuid())
   userId           String   @unique
@@ -238,38 +477,28 @@ model StripeCustomer {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberships  NetworkMembership[]
 
   @@map("stripe_customers")
 }
 
-model Subscription {
+model NetworkMembership {
   id                   String   @id @default(cuid())
   userId               String   @unique
   stripeSubscriptionId String   @unique
   stripePriceId        String
-  status               String   // active | past_due | canceled | incomplete | trialing
-  plan                 Plan     @default(FREE)
+  stripeCustomerId     String
+  status               String   // active | past_due | canceled | incomplete
   currentPeriodEnd     DateTime
   cancelAtPeriodEnd    Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomer StripeCustomer @relation(fields: [stripeCustomerId], references: [stripeCustomerId])
 
-  @@map("subscriptions")
-}
-
-model Entitlement {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  capabilities String[] // e.g. ["concept:write","run:persist",...]
-  source       String   @default("system") // system | subscription | admin
-  updatedAt    DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("entitlements")
+  @@map("network_memberships")
 }
 
 model BillingEvent {
@@ -279,39 +508,144 @@ model BillingEvent {
   payloadJson   Json
   receivedAt    DateTime  @default(now())
   processedAt   DateTime?
-  processResult String?   // ok | error:...
+  processResult String?
 
-  @@index([stripeEventId])
   @@map("billing_events")
 }
 
-// ─── Misc ─────────────────────────────────────────────────────────────────────
-model AssertionTest {
-  id               String   @id @default(cuid())
-  name             String
-  inputText        String
-  expectedLayer    String
-  expectedMinScore Float
-  createdAt        DateTime @default(now())
+// ─── Friends ──────────────────────────────────────────────────────────────────
 
-  @@map("assertion_tests")
+model FriendRequest {
+  id          String              @id @default(cuid())
+  senderId    String
+  receiverId  String
+  message     String?
+  status      FriendRequestStatus @default(PENDING)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  sender   User @relation("SentRequests",     fields: [senderId],   references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId])
+  @@map("friend_requests")
 }
 
-model Feedback {
+model Friendship {
   id        String   @id @default(cuid())
-  runId     String?
-  userId    String?
-  rating    Int
-  comment   String?
-  pagePath  String?
+  userAId   String
+  userBId   String
   createdAt DateTime @default(now())
 
-  run  Run?  @relation(fields: [runId],  references: [id])
-  user User? @relation(fields: [userId], references: [id])
+  userA User @relation("FriendA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendB", fields: [userBId], references: [id], onDelete: Cascade)
 
-  @@index([runId])
-  @@map("feedbacks")
+  @@unique([userAId, userBId])
+  @@map("friendships")
 }
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("BlockerUser", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedUser", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+// ─── DM ───────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String    @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String    @id @default(cuid())
+  conversationId String
+  senderId       String
+  encryptedBody  String    // AES-256-GCM encrypted body; iv prepended as hex:ciphertext
+  isDeleted      Boolean   @default(false)
+  deletedAt      DateTime?
+  deleteReason   String?
+  createdAt      DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+  flags        Flag[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+// ─── Timeline ─────────────────────────────────────────────────────────────────
+
+model TimelineEvent {
+  id          String             @id @default(cuid())
+  kind        TimelineEventKind
+  actorId     String
+  projectId   String?
+  reportId    String?
+  stpfNodeId  String?
+  targetUserId String?
+  metadata    Json?
+  visibility  TimelineVisibility @default(FRIENDS_ONLY)
+  createdAt   DateTime           @default(now())
+
+  actor   User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report  Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([visibility, createdAt])
+  @@map("timeline_events")
+}
+
+// ─── Follow ───────────────────────────────────────────────────────────────────
+
+model Follow {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+  @@map("follows")
+}
+
+// ─── Audit Log ───────────────────────────────────────────────────────────────
 
 model AuditLog {
   id         String   @id @default(cuid())
@@ -319,36 +653,118 @@ model AuditLog {
   action     String
   entityType String
   entityId   String
-  diff       Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
 
-  user    User?    @relation(fields: [userId],   references: [id])
-  concept Concept? @relation(fields: [entityId], references: [id], map: "audit_concept_fk")
+  user    User?    @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation("ProjectAuditLogs", fields: [entityId], references: [id], onDelete: NoAction, map: "audit_project_fk")
 
-  @@index([entityType, entityId])
   @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
-model PackVersion {
+// ─── Flag / Report ────────────────────────────────────────────────────────────
+
+model Flag {
+  id           String         @id @default(cuid())
+  reporterId   String
+  targetType   FlagTargetType
+  projectId    String?
+  reportId     String?
+  commentId    String?
+  messageId    String?
+  targetUserId String?
+  reason       String
+  details      String?
+  desiredAction String?
+  status       FlagStatus     @default(OPEN)
+  adminNotes   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  reporter User     @relation(fields: [reporterId], references: [id])
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  report   Report?  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  comment  Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  message  Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([targetType])
+  @@map("flags")
+}
+
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+
+model Feedback {
+  id           String   @id @default(cuid())
+  executionId  String
+  userId       String?
+  rating       Int      // 1-5
+  comment      String?
+  pagePath     String?
+  url          String?
+  userAgent    String?
+  context      Json?    // { operationHistory, targetObjectId, walletConnected }
+  status       String   @default("open") // open | reviewing | resolved
+  adminNotes   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([executionId])
+  @@index([status])
+  @@map("feedbacks")
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
   id        String   @id @default(cuid())
-  key       String   @unique
-  version   Int
+  userId    String
+  kind      String
+  title     String
+  body      String
+  linkUrl   String?
+  isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  @@map("pack_versions")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
 }
+
+// ─── Rate Limit ───────────────────────────────────────────────────────────────
 
 model RateLimit {
   id        String   @id @default(cuid())
-  ip        String
-  endpoint  String
+  key       String   // ip:endpoint or userId:endpoint
   count     Int      @default(1)
   windowEnd DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([ip, endpoint])
+  @@unique([key])
   @@index([windowEnd])
   @@map("rate_limits")
+}
+
+// ─── Export Log ───────────────────────────────────────────────────────────────
+
+model ExportLog {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  format    String   // json | pdf
+  sha256    String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("export_logs")
 }

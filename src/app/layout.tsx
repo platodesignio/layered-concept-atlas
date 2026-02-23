@@ -1,26 +1,25 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Header } from "@/components/layout/Header";
+import { Providers } from "@/components/layout/Providers";
+import { NavBar } from "@/components/layout/NavBar";
 import { FeedbackButton } from "@/components/layout/FeedbackButton";
-import { BillingStatusBanner } from "@/components/billing/BillingStatusBanner";
 
 export const metadata: Metadata = {
-  title: "Layered Concept Atlas",
-  description: "概念の多層構造を可視化・分析するツール",
+  title: process.env.NEXT_PUBLIC_APP_NAME ?? "Plato Network",
+  description: "STPF CYCLE — 研究・理論・論文・実装が因果リンクで接続された自走型ネットワーク",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className="bg-gray-950 text-gray-100 antialiased">
-        <Header />
-        <BillingStatusBanner />
-        {children}
-        <FeedbackButton />
+      <body>
+        <Providers>
+          <NavBar />
+          <main className="min-h-screen pt-12">
+            {children}
+          </main>
+          <FeedbackButton />
+        </Providers>
       </body>
     </html>
   );

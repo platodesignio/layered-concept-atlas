@@ -1,28 +1,41 @@
-export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin, isAuthUser } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
 
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin();
-  if (!isAuthUser(admin)) return admin;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const page = parseInt(searchParams.get("page") ?? "1");
-  const limit = Math.min(parseInt(searchParams.get("limit") ?? "20"), 100);
   const entityType = searchParams.get("entityType");
+  const entityId = searchParams.get("entityId");
+  const userId = searchParams.get("userId");
+  const action = searchParams.get("action");
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+  const limit = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
+  const skip = (page - 1) * limit;
 
-  const where = entityType ? { entityType } : {};
+  // Only admin can query all; others can query their own
+  if (user.role !== "NETWORK_ADMIN" && userId && userId !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
-  const [total, logs] = await Promise.all([
-    prisma.auditLog.count({ where }),
+  const where: Record<string, unknown> = {};
+  if (entityType) where.entityType = entityType;
+  if (entityId) where.entityId = entityId;
+  if (userId) where.userId = userId;
+  else if (user.role !== "NETWORK_ADMIN") where.userId = user.id;
+  if (action) where.action = { contains: action, mode: "insensitive" };
+
+  const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
-      skip: (page - 1) * limit,
-      take: limit,
       orderBy: { createdAt: "desc" },
-      include: { user: { select: { email: true, name: true } } },
+      skip,
+      take: limit,
+      include: { user: { select: { id: true, displayName: true, name: true, email: true } } },
     }),
+    prisma.auditLog.count({ where }),
   ]);
 
   return NextResponse.json({ logs, total, page, limit });

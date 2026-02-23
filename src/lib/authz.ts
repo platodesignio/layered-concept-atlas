@@ -1,107 +1,106 @@
-/**
- * authz.ts – Capability-based authorization
- *
- * Capabilities:
- *   concept:write      – 自分の概念を作成・編集
- *   concept:private    – プライベート概念の所有
- *   run:persist        – 分析Runの永続保存
- *   pack:write         – ConceptPack の作成・管理
- *   dictionary:write   – ユーザー辞書の追加・編集
- *   mapping:write      – ユーザー写像ルールの追加・編集
- *   layerdef:write     – レイヤー定義の説明文編集
- *   admin:*            – 全権限
- */
+import { Role, Visibility } from "@prisma/client";
 
-import { prisma } from "./prisma";
+// ─── Role hierarchy ───────────────────────────────────────────────────────────
 
-export type Capability =
-  | "concept:write"
-  | "concept:private"
-  | "run:persist"
-  | "pack:write"
-  | "dictionary:write"
-  | "mapping:write"
-  | "layerdef:write"
-  | "admin:*";
-
-export const PLAN_CAPABILITIES: Record<string, Capability[]> = {
-  FREE: [],
-  CREATOR: ["concept:write", "concept:private", "run:persist", "pack:write"],
-  AXIS: [
-    "concept:write",
-    "concept:private",
-    "run:persist",
-    "pack:write",
-    "dictionary:write",
-    "mapping:write",
-    "layerdef:write",
-  ],
+const ROLE_RANK: Record<Role, number> = {
+  VIEWER: 0,
+  MEMBER: 1,
+  EDITOR: 2,
+  PROJECT_OWNER: 3,
+  NETWORK_ADMIN: 4,
 };
 
-/** ユーザーの capabilities を返す（キャッシュなし・常に最新） */
-export async function getCapabilities(userId: string): Promise<Capability[]> {
-  // Admin check
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
-  if (!user) return [];
+export function hasRole(userRole: Role, required: Role): boolean {
+  return ROLE_RANK[userRole] >= ROLE_RANK[required];
+}
 
-  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  if (adminEmails.includes(user.email.toLowerCase())) {
-    return ["admin:*"];
+// ─── Project-scoped permission checks ────────────────────────────────────────
+
+export function canViewProject(
+  visibility: Visibility,
+  userRole: Role | null,
+  isNetworkMember: boolean,
+  isProjectMember: boolean
+): boolean {
+  switch (visibility) {
+    case "PUBLIC":
+      return true;
+    case "LINK_ONLY":
+      return true; // link-only: anyone with the link can view
+    case "NETWORK_ONLY":
+      return isNetworkMember || (userRole !== null && hasRole(userRole, "NETWORK_ADMIN"));
+    case "PROJECT_ONLY":
+      return isProjectMember || (userRole !== null && hasRole(userRole, "NETWORK_ADMIN"));
+    default:
+      return false;
   }
+}
 
-  // Entitlement from DB
-  const entitlement = await prisma.entitlement.findUnique({
-    where: { userId },
-  });
-  if (entitlement) {
-    return entitlement.capabilities as Capability[];
+export function canComment(
+  visibility: Visibility,
+  _userRole: Role | null,
+  isNetworkMember: boolean,
+  isProjectMember: boolean
+): boolean {
+  switch (visibility) {
+    case "PUBLIC":
+      return false; // PUBLIC is view+support only
+    case "LINK_ONLY":
+      return true;
+    case "NETWORK_ONLY":
+      return isNetworkMember;
+    case "PROJECT_ONLY":
+      return isProjectMember;
+    default:
+      return false;
   }
-
-  // Subscription fallback
-  const sub = await prisma.subscription.findUnique({
-    where: { userId },
-  });
-  if (sub && (sub.status === "active" || sub.status === "trialing")) {
-    const plan = sub.plan as keyof typeof PLAN_CAPABILITIES;
-    return PLAN_CAPABILITIES[plan] ?? [];
-  }
-
-  return [];
 }
 
-/** 単一capability確認 */
-export async function can(userId: string, capability: Capability): Promise<boolean> {
-  const caps = await getCapabilities(userId);
-  return caps.includes("admin:*") || caps.includes(capability);
+export function canVote(
+  visibility: Visibility,
+  isNetworkMember: boolean
+): boolean {
+  return (
+    (visibility === "NETWORK_ONLY" || visibility === "PROJECT_ONLY") &&
+    isNetworkMember
+  );
 }
 
-/** 複数capability確認（全て必要） */
-export async function canAll(userId: string, capabilities: Capability[]): Promise<boolean> {
-  const caps = await getCapabilities(userId);
-  if (caps.includes("admin:*")) return true;
-  return capabilities.every((c) => caps.includes(c));
+export function canEditReport(
+  userRole: Role,
+  isProjectMember: boolean,
+  isAuthor: boolean
+): boolean {
+  return isAuthor || isProjectMember || hasRole(userRole, "NETWORK_ADMIN");
 }
 
-/** Entitlementを更新（Webhook・管理から呼ぶ） */
-export async function setEntitlement(
-  userId: string,
-  capabilities: Capability[],
-  source: "system" | "subscription" | "admin" = "subscription"
-): Promise<void> {
-  await prisma.entitlement.upsert({
-    where: { userId },
-    update: { capabilities, source, updatedAt: new Date() },
-    create: { userId, capabilities, source, updatedAt: new Date() },
-  });
+export function canApproveReport(
+  userRole: Role,
+  isProjectOwner: boolean
+): boolean {
+  return isProjectOwner || hasRole(userRole, "NETWORK_ADMIN");
 }
 
-/** プラン名から capabilities を取得 */
-export function capabilitiesForPlan(plan: string): Capability[] {
-  return PLAN_CAPABILITIES[plan.toUpperCase()] ?? [];
+export function canManageProject(
+  userRole: Role,
+  isProjectOwner: boolean
+): boolean {
+  return isProjectOwner || hasRole(userRole, "NETWORK_ADMIN");
+}
+
+// ─── Visibility helpers ───────────────────────────────────────────────────────
+
+export function visibilityAllowsOperation(
+  visibility: Visibility,
+  operation: "view" | "comment" | "vote" | "edit" | "approve"
+): Record<string, boolean> {
+  return {
+    PUBLIC: operation === "view",
+    LINK_ONLY: operation === "view" || operation === "comment",
+    NETWORK_ONLY:
+      operation === "view" ||
+      operation === "comment" ||
+      operation === "vote",
+    PROJECT_ONLY: true,
+  };
 }

@@ -1,0 +1,24 @@
+/** @type {import('jest').Config} */
+const config = {
+  preset: "ts-jest",
+  testEnvironment: "node",
+  moduleNameMapper: {
+    "^@/(.*)$": "<rootDir>/src/$1",
+  },
+  transform: {
+    "^.+\.tsx?$": [
+      "ts-jest",
+      {
+        tsconfig: {
+          module: "commonjs",
+          moduleResolution: "node",
+          skipLibCheck: true,
+          strict: false,
+        },
+      },
+    ],
+  },
+  testMatch: ["**/__tests__/**/*.test.ts"],
+};
+
+module.exports = config;

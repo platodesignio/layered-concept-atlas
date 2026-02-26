@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
+// Next.js 15: searchParams is now a Promise
 interface Props {
   searchParams: Promise<{ entityType?: string; action?: string; page?: string }>;
 }

@@ -27,8 +27,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const member = await prisma.projectMember.findUnique({
     where: { projectId_userId: { projectId: report.projectId, userId: user.id } },
   });
-  const project = await prisma.project.findUnique({ where: { id: report.projectId } });
-  const isProjectOwner = project?.ownerId === user.id;
 
   if (!canEditReport(user.role, !!member, report.authorId === user.id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

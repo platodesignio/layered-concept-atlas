@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/session";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const report = await prisma.report.findUnique({ where: { id: params.id } });
+  const report = await prisma.report.findUnique({ where: { id } });
   if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (report.authorId !== user.id && user.role !== "NETWORK_ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const updated = await prisma.$transaction(async (tx) => {
     const r = await tx.report.update({
-      where: { id: params.id },
+      where: { id },
       data: { status: "PENDING_APPROVAL" },
     });
     await tx.auditLog.create({

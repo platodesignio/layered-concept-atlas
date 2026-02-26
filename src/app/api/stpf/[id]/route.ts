@@ -8,9 +8,10 @@ const UpdateSchema = z.object({
   content: z.record(z.unknown()).optional(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const node = await prisma.stpfNode.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       author: { select: { id: true, displayName: true, name: true } },
       project: { select: { id: true, title: true } },
@@ -22,11 +23,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ node });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const node = await prisma.stpfNode.findUnique({ where: { id: params.id } });
+  const node = await prisma.stpfNode.findUnique({ where: { id } });
   if (!node) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (node.authorId !== user.id && user.role !== "NETWORK_ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -42,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(parsed.data.content !== undefined ? { content: JSON.parse(JSON.stringify(parsed.data.content)) } : {}),
     };
     const n = await tx.stpfNode.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
     });
     await tx.auditLog.create({

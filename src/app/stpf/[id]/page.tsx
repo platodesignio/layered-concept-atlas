@@ -3,11 +3,12 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 
 export default async function StpfDetailPage({ params }: Props) {
+  const { id } = await params;
   const node = await prisma.stpfNode.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       author: { select: { id: true, displayName: true, name: true } },
       project: { select: { id: true, title: true, slug: true } },

@@ -7,11 +7,12 @@ const ActionSchema = z.object({
   action: z.enum(["accept", "decline", "cancel"]),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const request = await prisma.friendRequest.findUnique({ where: { id: params.id } });
+  const request = await prisma.friendRequest.findUnique({ where: { id } });
   if (!request) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
@@ -39,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const updated = await prisma.$transaction(async (tx) => {
     const r = await tx.friendRequest.update({
-      where: { id: params.id },
+      where: { id },
       data: { status: statusMap[action] },
     });
     if (action === "accept") {

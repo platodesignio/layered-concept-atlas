@@ -13,9 +13,10 @@ const UpdateSchema = z.object({
   visibility: z.nativeEnum(Visibility).optional(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const report = await prisma.report.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       author: { select: { id: true, displayName: true, name: true } },
       project: { select: { id: true, title: true, slug: true, ownerId: true } },
@@ -27,12 +28,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ report });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const report = await prisma.report.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { project: { select: { ownerId: true } } },
   });
   if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -52,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const updated = await prisma.report.update({
-    where: { id: params.id },
+    where: { id },
     data: parsed.data,
   });
 

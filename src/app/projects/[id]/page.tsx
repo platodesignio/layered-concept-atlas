@@ -4,12 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 
-interface Props { params: { id: string } }
+interface Props { params: Promise<{ id: string }> }
 
 export default async function ProjectDetailPage({ params }: Props) {
   const session = await auth();
+  const { id } = await params;
   const project = await prisma.project.findFirst({
-    where: { OR: [{ id: params.id }, { slug: params.id }], isFrozen: false },
+    where: { OR: [{ id }, { slug: id }], isFrozen: false },
     include: {
       owner: { select: { id: true, displayName: true, name: true } },
       members: { include: { user: { select: { id: true, displayName: true, name: true } } } },

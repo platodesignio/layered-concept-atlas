@@ -3,11 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser, getProjectRole } from "@/lib/session";
 import { canApproveReport } from "@/lib/authz";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const report = await prisma.report.findUnique({ where: { id: params.id } });
+  const report = await prisma.report.findUnique({ where: { id } });
   if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (report.status !== "PENDING_APPROVAL") {
     return NextResponse.json({ error: "Report is not pending approval" }, { status: 400 });
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const updated = await prisma.$transaction(async (tx) => {
     const r = await tx.report.update({
-      where: { id: params.id },
+      where: { id },
       data: { status: "PUBLISHED", approverId: user.id, publishedAt: new Date() },
     });
     // Save version snapshot

@@ -13,12 +13,13 @@ const ReviseSchema = z.object({
   nextActions: z.string().min(1).max(10000).optional(),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const report = await prisma.report.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { stpfItems: true },
   });
   if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     // Update report — reset to pending if already published
     const r = await tx.report.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...updateFields,
         versionNumber: newVersion,

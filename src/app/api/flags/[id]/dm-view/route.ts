@@ -6,7 +6,8 @@ import { decryptDmBody } from "@/lib/crypto/dm";
 
 const ViewSchema = z.object({ viewReason: z.string().min(10).max(1000) });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const user = await getSessionUser();
   if (!user || user.role !== "NETWORK_ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const parsed = ViewSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const flag = await prisma.flag.findUnique({ where: { id: params.id } });
+  const flag = await prisma.flag.findUnique({ where: { id } });
   if (!flag || flag.targetType !== "DM_MESSAGE") {
     return NextResponse.json({ error: "Not a DM flag" }, { status: 400 });
   }
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       action: "DM_VIEWED_BY_ADMIN",
       entityType: "message",
       entityId: flag.messageId,
-      metadata: { flagId: params.id, viewReason: parsed.data.viewReason },
+      metadata: { flagId: id, viewReason: parsed.data.viewReason },
     },
   });
 

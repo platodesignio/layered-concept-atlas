@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
 
 interface Props {
-  searchParams: { filter?: string; cursor?: string };
+  searchParams: Promise<{ filter?: string; cursor?: string }>;
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -23,8 +23,9 @@ const EVENT_LABELS: Record<string, string> = {
 
 export default async function TimelinePage({ searchParams }: Props) {
   const session = await auth();
-  const filter = searchParams.filter ?? "Network";
-  const cursor = searchParams.cursor;
+  const sp = await searchParams;
+  const filter = sp.filter ?? "Network";
+  const cursor = sp.cursor;
   const limit = 20;
 
   const visibilities = session

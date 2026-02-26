@@ -13,9 +13,10 @@ const UpdateSchema = z.object({
   receiptAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional().nullable(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const project = await prisma.project.findFirst({
-    where: { OR: [{ id: params.id }, { slug: params.id }], isFrozen: false },
+    where: { OR: [{ id }, { slug: id }], isFrozen: false },
     include: {
       owner: { select: { id: true, displayName: true, name: true } },
       members: {
@@ -29,14 +30,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ project });
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const project = await prisma.project.findUnique({ where: { id: params.id } });
+  const { id } = await params;
+  const project = await prisma.project.findUnique({ where: { id } });
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const isPM = await isProjectMember(user.id, params.id);
+  const isPM = await isProjectMember(user.id, id);
   if (!canManageProject(user.role, isPM && project.ownerId === user.id)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -47,7 +49,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const updated = await prisma.$transaction(async (tx) => {
     const p = await tx.project.update({
-      where: { id: params.id },
+      where: { id: id },
       data: parsed.data,
     });
     await tx.auditLog.create({
@@ -55,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         userId: user.id,
         action: "PROJECT_UPDATED",
         entityType: "project",
-        entityId: params.id,
+        entityId: id,
         metadata: JSON.parse(JSON.stringify(parsed.data)),
       },
     });

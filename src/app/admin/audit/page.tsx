@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
 interface Props {
-  searchParams: { entityType?: string; action?: string; page?: string };
+  searchParams: Promise<{ entityType?: string; action?: string; page?: string }>;
 }
 
 export default async function AdminAuditPage({ searchParams }: Props) {
@@ -14,12 +14,13 @@ export default async function AdminAuditPage({ searchParams }: Props) {
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
   if (dbUser?.role !== "NETWORK_ADMIN") redirect("/");
 
-  const page = Math.max(1, parseInt(searchParams.page ?? "1"));
+  const sp = await searchParams;
+  const page = Math.max(1, parseInt(sp.page ?? "1"));
   const limit = 50;
 
   const where: Record<string, unknown> = {};
-  if (searchParams.entityType) where.entityType = searchParams.entityType;
-  if (searchParams.action) where.action = { contains: searchParams.action, mode: "insensitive" };
+  if (sp.entityType) where.entityType = sp.entityType;
+  if (sp.action) where.action = { contains: sp.action, mode: "insensitive" };
 
   const [logs, total] = await Promise.all([
     prisma.auditLog.findMany({
@@ -40,8 +41,8 @@ export default async function AdminAuditPage({ searchParams }: Props) {
       </div>
 
       <form className="flex gap-2 mb-4">
-        <input name="entityType" defaultValue={searchParams.entityType} placeholder="エンティティ種別" className="border px-2 py-1 text-sm" />
-        <input name="action" defaultValue={searchParams.action} placeholder="アクション" className="border px-2 py-1 text-sm" />
+        <input name="entityType" defaultValue={sp.entityType} placeholder="エンティティ種別" className="border px-2 py-1 text-sm" />
+        <input name="action" defaultValue={sp.action} placeholder="アクション" className="border px-2 py-1 text-sm" />
         <button type="submit" className="bg-black text-white px-3 py-1 text-sm">絞込</button>
       </form>
 

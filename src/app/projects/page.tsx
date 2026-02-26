@@ -2,13 +2,14 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 interface Props {
-  searchParams: { q?: string; tag?: string; page?: string };
+  searchParams: Promise<{ q?: string; tag?: string; page?: string }>;
 }
 
 export default async function ProjectsPage({ searchParams }: Props) {
-  const q = searchParams.q ?? "";
-  const tag = searchParams.tag;
-  const page = Math.max(1, parseInt(searchParams.page ?? "1"));
+  const sp = await searchParams;
+  const q = sp.q ?? "";
+  const tag = sp.tag;
+  const page = Math.max(1, parseInt(sp.page ?? "1"));
   const limit = 20;
   const skip = (page - 1) * limit;
 

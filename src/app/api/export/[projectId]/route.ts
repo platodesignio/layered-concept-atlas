@@ -4,7 +4,8 @@ import { getSessionUser } from "@/lib/session";
 import { generateProjectPdf } from "@/lib/pdf";
 import { createHash } from "crypto";
 
-export async function GET(req: NextRequest, { params }: { params: { projectId: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
   const format = searchParams.get("format") ?? "json";
 
   const project = await prisma.project.findUnique({
-    where: { id: params.projectId, isFrozen: false },
+    where: { id: projectId, isFrozen: false },
     include: {
       owner: { select: { id: true, displayName: true, name: true } },
       stpfNodes: {
@@ -32,14 +33,14 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const auditExcerpts = await prisma.auditLog.findMany({
-    where: { entityType: "project", entityId: params.projectId },
+    where: { entityType: "project", entityId: projectId },
     orderBy: { createdAt: "desc" },
     take: 50,
     select: { action: true, entityType: true, createdAt: true },
   });
 
   const timelineEvents = await prisma.timelineEvent.findMany({
-    where: { projectId: params.projectId, visibility: { in: ["PUBLIC", "NETWORK_ONLY"] } },
+    where: { projectId: projectId, visibility: { in: ["PUBLIC", "NETWORK_ONLY"] } },
     orderBy: { createdAt: "desc" },
     take: 30,
     select: { kind: true, createdAt: true },
@@ -79,14 +80,14 @@ export async function GET(req: NextRequest, { params }: { params: { projectId: s
   const sha256 = createHash("sha256").update(jsonBytes).digest("hex");
 
   await prisma.exportLog.create({
-    data: { projectId: params.projectId, userId: user.id, format, sha256 },
+    data: { projectId: projectId, userId: user.id, format, sha256 },
   });
   await prisma.auditLog.create({
     data: {
       userId: user.id,
       action: "EXPORT_GENERATED",
       entityType: "project",
-      entityId: params.projectId,
+      entityId: projectId,
       metadata: { format, sha256 },
     },
   });

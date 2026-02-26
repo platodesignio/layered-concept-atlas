@@ -9,6 +9,7 @@ const nextConfig = {
         ...config.resolve.fallback,
         encoding: false,
         "pino-pretty": false,
+        pino: false,
         net: false,
         tls: false,
         fs: false,

@@ -13,13 +13,16 @@ const nextConfig = {
         tls: false,
         fs: false,
         dns: false,
+        // MetaMask SDK が要求する React Native モジュールをブラウザでは無効化
+        "@react-native-async-storage/async-storage": false,
+        "react-native": false,
       };
     }
     if (isServer) {
       // サーバーサイドで WalletConnect / MetaMask SDK の IndexedDB 依存を無視
       config.plugins.push(
         new webpack.IgnorePlugin({
-          resourceRegExp: /^(idb-keyval|keyvaluestorage-interface)$/,
+          resourceRegExp: /^(idb-keyval|keyvaluestorage-interface|@react-native-async-storage\/async-storage|react-native)$/,
         })
       );
     }

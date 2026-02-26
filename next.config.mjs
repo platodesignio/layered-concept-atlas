@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
-  },
+  serverExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
 
   webpack(config, { isServer, webpack }) {
     if (!isServer) {

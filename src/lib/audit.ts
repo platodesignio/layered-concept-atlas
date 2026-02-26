@@ -1,53 +1,70 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { v4 as uuidv4 } from "uuid";
 
-export interface AuditParams {
-  userId?: string | null;
+interface AuditParams {
+  userId?: string;
+  orderId?: string;
   action: string;
   entityType: string;
   entityId: string;
-  metadata?: Record<string, unknown> | null;
-  ipAddress?: string | null;
-  userAgent?: string | null;
+  metadata?: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
-function serializeMeta(m: Record<string, unknown> | null | undefined): Prisma.InputJsonValue | undefined {
-  if (m == null) return undefined;
-  return JSON.parse(JSON.stringify(m)) as Prisma.InputJsonValue;
-}
-
-/**
- * 監査ログを追記する。削除不可・改変不可の追記専用関数。
- * DB制約でDELETE/UPDATEを禁止することは不可能なため、
- * アプリケーション層でのみ追記を許可し、管理者UIでも削除ボタンを非表示にする。
- */
-export async function writeAuditLog(params: AuditParams): Promise<void> {
+export async function createAuditLog(params: AuditParams): Promise<void> {
   await prisma.auditLog.create({
     data: {
-      userId: params.userId ?? null,
+      userId: params.userId,
+      orderId: params.orderId,
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId,
-      metadata: serializeMeta(params.metadata),
-      ipAddress: params.ipAddress ?? null,
-      userAgent: params.userAgent ?? null,
+      metadata: params.metadata as never,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
     },
   });
 }
 
-export async function writeAuditLogTx(
-  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
-  params: AuditParams
-): Promise<void> {
-  await tx.auditLog.create({
+interface ExecutionParams {
+  orderId: string;
+  actor: "system" | "admin" | "user";
+  action: string;
+  inputHash?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export async function startExecution(params: ExecutionParams): Promise<string> {
+  const executionId = uuidv4();
+  await prisma.executionLog.create({
     data: {
-      userId: params.userId ?? null,
+      executionId,
+      orderId: params.orderId,
+      actor: params.actor,
       action: params.action,
-      entityType: params.entityType,
-      entityId: params.entityId,
-      metadata: serializeMeta(params.metadata),
-      ipAddress: params.ipAddress ?? null,
-      userAgent: params.userAgent ?? null,
+      inputHash: params.inputHash,
+      metadata: params.metadata as never,
+      startedAt: new Date(),
+    },
+  });
+  return executionId;
+}
+
+export async function finishExecution(
+  executionId: string,
+  outputHash?: string,
+  error?: string
+): Promise<void> {
+  await prisma.executionLog.update({
+    where: { executionId },
+    data: {
+      outputHash,
+      error,
+      finishedAt: new Date(),
     },
   });
 }
+
+// Backward compatibility alias
+export const writeAuditLog = createAuditLog;

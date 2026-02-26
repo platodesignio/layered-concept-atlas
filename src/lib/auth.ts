@@ -2,76 +2,49 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Resend from "next-auth/providers/resend";
 import { prisma } from "@/lib/prisma";
-import { writeAuditLog } from "@/lib/audit";
+
+const ADMIN_ALLOWLIST = (process.env.ADMIN_EMAIL_ALLOWLIST || "")
+  .split(",")
+  .map((e) => e.trim())
+  .filter(Boolean);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
     Resend({
-      from: process.env.EMAIL_FROM!,
-      apiKey: process.env.RESEND_API_KEY!,
-      name: "Email",
+      apiKey: process.env.RESEND_API_KEY,
+      from: process.env.RESEND_FROM_EMAIL || "noreply@example.com",
+      name: "Plato Pre-Review Engine",
     }),
   ],
-  session: {
-    strategy: "database",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
   callbacks: {
     async session({ session, user }) {
-      if (session.user && user) {
+      if (session.user) {
         session.user.id = user.id;
-        // Fetch role from DB
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { role: true, isFrozen: true, displayName: true, walletAddress: true },
+          select: { isAdmin: true, adminRole: true },
         });
-        if (dbUser) {
-          const u = session.user as unknown as Record<string, unknown>;
-          u.role = dbUser.role;
-          u.isFrozen = dbUser.isFrozen;
-          u.displayName = dbUser.displayName;
-          u.walletAddress = dbUser.walletAddress;
-        }
+        const u = session.user as typeof session.user & {
+          isAdmin: boolean;
+          adminRole: string | null;
+        };
+        u.isAdmin = dbUser?.isAdmin ?? false;
+        u.adminRole = dbUser?.adminRole ?? null;
       }
       return session;
     },
     async signIn({ user }) {
-      // Bootstrap admin user on first sign-in
-      const adminEmail = process.env.ADMIN_EMAIL_BOOTSTRAP;
-      if (adminEmail && user.email === adminEmail) {
-        const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
-        if (existing && existing.role !== "NETWORK_ADMIN") {
-          await prisma.user.update({
-            where: { id: existing.id },
-            data: { role: "NETWORK_ADMIN" },
-          });
-        }
+      if (!user.email) return false;
+      if (ADMIN_ALLOWLIST.includes(user.email)) {
+        await prisma.user
+          .update({
+            where: { email: user.email },
+            data: { isAdmin: true, adminRole: "admin" },
+          })
+          .catch(() => null);
       }
       return true;
-    },
-  },
-  events: {
-    async signIn({ user, isNewUser }) {
-      if (user.id) {
-        await writeAuditLog({
-          userId: user.id,
-          action: isNewUser ? "USER_REGISTERED" : "USER_SIGNIN",
-          entityType: "user",
-          entityId: user.id,
-        });
-      }
-    },
-    async signOut(message) {
-      const s = (message as unknown as { session?: { userId?: string } }).session;
-      if (s?.userId) {
-        await writeAuditLog({
-          userId: s.userId,
-          action: "USER_SIGNOUT",
-          entityType: "user",
-          entityId: s.userId,
-        });
-      }
     },
   },
   pages: {
@@ -79,4 +52,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     verifyRequest: "/auth/verify",
     error: "/auth/error",
   },
+  session: {
+    strategy: "database",
+  },
 });
+
+export function isAdminEmail(email: string): boolean {
+  return ADMIN_ALLOWLIST.includes(email);
+}

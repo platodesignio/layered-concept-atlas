@@ -3,6 +3,8 @@ import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 
+export const maxDuration = 300;
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" });
 
 export async function POST(req: NextRequest) {

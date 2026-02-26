@@ -48,7 +48,7 @@ export async function isNetworkMember(userId: string): Promise<boolean> {
     select: { status: true, validUntil: true },
   });
   if (!membership) return false;
-  return membership.status === "active" && membership.validUntil > new Date();
+  return membership.status === "active" && (membership.validUntil == null || membership.validUntil > new Date());
 }
 
 export async function isProjectMember(userId: string, projectId: string): Promise<boolean> {

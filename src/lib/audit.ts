@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from "uuid";
 
 interface AuditParams {
   userId?: string;
-  orderId?: string;
   action: string;
   entityType: string;
   entityId: string;
@@ -16,7 +15,6 @@ export async function createAuditLog(params: AuditParams): Promise<void> {
   await prisma.auditLog.create({
     data: {
       userId: params.userId,
-      orderId: params.orderId,
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId,
@@ -28,7 +26,6 @@ export async function createAuditLog(params: AuditParams): Promise<void> {
 }
 
 interface ExecutionParams {
-  orderId: string;
   actor: "system" | "admin" | "user";
   action: string;
   inputHash?: string;
@@ -40,7 +37,6 @@ export async function startExecution(params: ExecutionParams): Promise<string> {
   await prisma.executionLog.create({
     data: {
       executionId,
-      orderId: params.orderId,
       actor: params.actor,
       action: params.action,
       inputHash: params.inputHash,

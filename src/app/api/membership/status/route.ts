@@ -16,7 +16,7 @@ export async function GET() {
   });
 
   // 期限切れの場合はステータスを expired に更新
-  if (membership && membership.status === "active" && membership.validUntil < new Date()) {
+  if (membership && membership.status === "active" && membership.validUntil != null && membership.validUntil < new Date()) {
     await prisma.networkMembership.update({
       where: { userId: user.id },
       data: { status: "expired" },

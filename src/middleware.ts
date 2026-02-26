@@ -17,7 +17,7 @@ export default auth(
         return NextResponse.redirect(new URL("/auth/signin", req.url));
       }
       if (!(session.user as { isAdmin?: boolean }).isAdmin) {
-        return NextResponse.redirect(new URL("/app/orders", req.url));
+        return NextResponse.redirect(new URL("/", req.url));
       }
     }
 

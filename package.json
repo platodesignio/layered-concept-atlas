@@ -25,6 +25,8 @@
     "@aws-sdk/s3-request-presigner": "3.697.0",
     "@prisma/client": "5.22.0",
     "@tanstack/react-query": "^5.0.0",
+    "ably": "^2.0.0",
+    "pusher": "^5.2.0",
     "viem": "^2.0.0",
     "wagmi": "^2.0.0",
     "date-fns": "4.1.0",

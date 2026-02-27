@@ -1,49 +1,9 @@
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const emptyModule = path.resolve(__dirname, "src/lib/empty-module.js");
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
 
-  webpack(config, { isServer, webpack }) {
+  webpack(config, { isServer }) {
     if (!isServer) {
-      // The import chain causing the build failure is:
-      //   wagmi/connectors → @wagmi/connectors/walletConnect
-      //   → @walletconnect/ethereum-provider
-      //   → @walletconnect/universal-provider
-      //   → @walletconnect/logger
-      //   → pino  ← Node.js only, fails in browser bundle
-      //
-      // Strategy: stub out the entire @walletconnect/* namespace and pino/*
-      // with an empty module. This allows wagmi/connectors (and injected())
-      // to be imported normally, while walletConnect() gracefully degrades
-      // to a no-op at build time (it's only called at runtime via onClick).
-      config.plugins.push(
-        new webpack.NormalModuleReplacementPlugin(
-          /node_modules\/@walletconnect\/logger\//,
-          emptyModule,
-        ),
-        new webpack.NormalModuleReplacementPlugin(
-          /node_modules\/@walletconnect\/universal-provider\//,
-          emptyModule,
-        ),
-        new webpack.NormalModuleReplacementPlugin(
-          /node_modules\/@walletconnect\/ethereum-provider\//,
-          emptyModule,
-        ),
-        new webpack.NormalModuleReplacementPlugin(
-          /node_modules\/pino\//,
-          emptyModule,
-        ),
-        new webpack.NormalModuleReplacementPlugin(
-          /node_modules\/pino-pretty\//,
-          emptyModule,
-        ),
-      );
-
       config.resolve.alias = {
         ...config.resolve.alias,
         "@react-native-async-storage/async-storage": false,

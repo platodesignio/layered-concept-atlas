@@ -2,19 +2,18 @@
 
 import { useSession } from "next-auth/react";
 import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
-import { injected, walletConnect } from "wagmi/connectors";
 import { createSiweMessage } from "viem/siwe";
 import { useState } from "react";
 
-// @walletconnect/* packages are stubbed with an empty module in next.config.mjs
-// via NormalModuleReplacementPlugin (matches node_modules/@walletconnect/*).
-// This means walletConnect() is a no-op at build time but works at runtime
-// because the browser loads the real package via the chunk bundled separately.
+// wagmi/connectors is NOT imported — importing it pulls in the entire
+// @wagmi/connectors bundle including walletConnect → @walletconnect/* → pino.
+// MetaMask / injected wallets are supported via wagmi's built-in connector.
+// WalletConnect support can be added once a pino-compatible build is available.
 
 export default function WalletPage() {
   const { data: session } = useSession();
   const { address, isConnected, chain } = useAccount();
-  const { connect } = useConnect();
+  const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const [status, setStatus] = useState("");
@@ -99,19 +98,19 @@ export default function WalletPage() {
           {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
         </div>
       ) : (
-        <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => connect({ connector: injected() })}
-            className="border border-black px-3 py-1 text-sm"
-          >
-            MetaMask / ブラウザウォレット
-          </button>
-          <button
-            onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "" }) })}
-            className="border border-black px-3 py-1 text-sm"
-          >
-            WalletConnect
-          </button>
+        <div className="flex flex-col gap-2 mb-4">
+          {connectors.map((connector) => (
+            <button
+              key={connector.id}
+              onClick={() => connect({ connector })}
+              className="border border-black px-3 py-1 text-sm text-left"
+            >
+              {connector.name} で接続
+            </button>
+          ))}
+          {connectors.length === 0 && (
+            <p className="text-sm text-gray-500">ブラウザウォレット（MetaMask等）をインストールしてください。</p>
+          )}
         </div>
       )}
 

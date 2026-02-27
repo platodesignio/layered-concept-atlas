@@ -1,16 +1,14 @@
-// cache-bust: 2026-02-27
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-// Next.js 15: searchParams is now a Promise
-interface Props {
+export default async function AdminAuditPage({
+  searchParams,
+}: {
   searchParams: Promise<{ entityType?: string; action?: string; page?: string }>;
-}
-
-export default async function AdminAuditPage({ searchParams }: Props) {
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });

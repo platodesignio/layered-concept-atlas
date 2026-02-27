@@ -4,11 +4,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-interface Props {
+export default async function AdminUsersPage({
+  searchParams,
+}: {
   searchParams: Promise<{ page?: string }>;
-}
-
-export default async function AdminUsersPage({ searchParams }: Props) {
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });

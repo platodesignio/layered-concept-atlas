@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 
-interface Props { params: Promise<{ id: string }> }
-
-export default async function ProjectDetailPage({ params }: Props) {
+export default async function ProjectDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const session = await auth();
   const { id } = await params;
   const project = await prisma.project.findFirst({

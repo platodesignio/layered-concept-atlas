@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
-interface Props {
+export default async function ProjectsPage({
+  searchParams,
+}: {
   searchParams: Promise<{ q?: string; tag?: string; page?: string }>;
-}
-
-export default async function ProjectsPage({ searchParams }: Props) {
+}) {
   const sp = await searchParams;
   const q = sp.q ?? "";
   const tag = sp.tag;

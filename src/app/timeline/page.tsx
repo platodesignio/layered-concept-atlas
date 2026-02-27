@@ -3,10 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
 
-interface Props {
-  searchParams: Promise<{ filter?: string; cursor?: string }>;
-}
-
 const EVENT_LABELS: Record<string, string> = {
   PROJECT_CREATED: "プロジェクトを作成",
   PROJECT_UPDATED: "プロジェクトを更新",
@@ -21,7 +17,11 @@ const EVENT_LABELS: Record<string, string> = {
   REPORT_REVISED: "報告を改訂",
 };
 
-export default async function TimelinePage({ searchParams }: Props) {
+export default async function TimelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string; cursor?: string }>;
+}) {
   const session = await auth();
   const sp = await searchParams;
   const filter = sp.filter ?? "Network";

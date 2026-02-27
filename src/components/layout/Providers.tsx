@@ -6,16 +6,15 @@ import { useState } from "react";
 import { WagmiProvider, createConfig } from "wagmi";
 import { base } from "wagmi/chains";
 import { http } from "viem";
-import { injected } from "wagmi/connectors";
 
-// NOTE: walletConnect is intentionally NOT imported here.
-// It pulls in pino via @walletconnect/logger which cannot be bundled
-// for the browser. WalletConnect is handled separately in
-// WalletConnectInner.tsx which is loaded via next/dynamic (ssr:false).
+// wagmi/connectors is NOT imported here at all.
+// Importing it would pull @wagmi/connectors → @walletconnect → pino
+// into the build bundle. Connectors are added lazily on user interaction
+// in wallet/page.tsx instead.
 const wagmiConfig = createConfig({
   chains: [base],
   transports: { [base.id]: http() },
-  connectors: [injected()],
+  connectors: [],
   ssr: true,
 });
 

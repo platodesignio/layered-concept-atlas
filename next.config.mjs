@@ -1,26 +1,38 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const emptyModule = path.resolve(__dirname, "src/lib/empty-module.js");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
 
   webpack(config, { isServer, webpack }) {
     if (!isServer) {
-      // Stub out Node.js-only modules with empty modules so that
-      // pino / @walletconnect/* / react-native never fail client builds.
+      // Replace ALL pino-related modules and @walletconnect/logger with an
+      // empty stub. The regex matches pino, pino/*, pino-pretty, and
+      // @walletconnect/logger (which is the only consumer of pino).
       config.plugins.push(
         new webpack.NormalModuleReplacementPlugin(
-          /^pino$/,
-          require.resolve("./src/lib/empty-module.js"),
+          /^pino(\/.*)?$/,
+          emptyModule,
         ),
         new webpack.NormalModuleReplacementPlugin(
-          /^pino-pretty$/,
-          require.resolve("./src/lib/empty-module.js"),
+          /^pino-pretty(\/.*)?$/,
+          emptyModule,
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+          /^@walletconnect\/logger(\/.*)?$/,
+          emptyModule,
         ),
       );
 
       config.resolve.alias = {
         ...config.resolve.alias,
-        "pino": false,
-        "pino-pretty": false,
+        "pino": emptyModule,
+        "pino-pretty": emptyModule,
+        "@walletconnect/logger": emptyModule,
         "@react-native-async-storage/async-storage": false,
         "react-native": false,
         "encoding": false,
@@ -33,10 +45,6 @@ const nextConfig = {
         fs: false,
         dns: false,
         encoding: false,
-        "pino-pretty": false,
-        pino: false,
-        "@react-native-async-storage/async-storage": false,
-        "react-native": false,
       };
     }
     return config;

@@ -2,9 +2,13 @@
 
 import { useSession } from "next-auth/react";
 import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
-import { injected } from "wagmi/connectors";
 import { createSiweMessage } from "viem/siwe";
 import { useState } from "react";
+
+// NOTE: wagmi/connectors is NOT statically imported here.
+// Both injected() and walletConnect() are imported lazily inside click
+// handlers so that the entire @wagmi/connectors → @walletconnect → pino
+// dependency chain is excluded from the build-time bundle.
 
 export default function WalletPage() {
   const { data: session } = useSession();
@@ -65,12 +69,15 @@ export default function WalletPage() {
     }
   };
 
-  // walletConnect is imported lazily inside the click handler so that
-  // pino / @walletconnect/* are NEVER part of the build-time bundle.
+  const handleInjected = async () => {
+    const { injected } = await import("wagmi/connectors");
+    connect({ connector: injected() });
+  };
+
   const handleWalletConnect = async () => {
-    const mod = await import("wagmi/connectors");
+    const { walletConnect } = await import("wagmi/connectors");
     connect({
-      connector: mod.walletConnect({
+      connector: walletConnect({
         projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
       }),
     });
@@ -106,16 +113,10 @@ export default function WalletPage() {
         </div>
       ) : (
         <div className="flex gap-2 mb-4">
-          <button
-            onClick={() => connect({ connector: injected() })}
-            className="border border-black px-3 py-1 text-sm"
-          >
+          <button onClick={handleInjected} className="border border-black px-3 py-1 text-sm">
             MetaMask / ブラウザウォレット
           </button>
-          <button
-            onClick={handleWalletConnect}
-            className="border border-black px-3 py-1 text-sm"
-          >
+          <button onClick={handleWalletConnect} className="border border-black px-3 py-1 text-sm">
             WalletConnect
           </button>
         </div>

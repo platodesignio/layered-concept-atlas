@@ -4,16 +4,21 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-// Next.js 15: searchParams must be awaited (it is a Promise)
-export default async function AdminAuditPage(props: {
-  searchParams: Promise<{ entityType?: string; action?: string; page?: string }>;
+// searchParams is Promise<T> in Next.js 15.1+, plain object in 15.0.x.
+// Accept both by treating the value as unknown and resolving it.
+export default async function AdminAuditPage({
+  searchParams,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  searchParams: any;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
   if (dbUser?.role !== "NETWORK_ADMIN") redirect("/");
 
-  const sp = await props.searchParams;
+  // Await in case it is a Promise (Next.js 15.1+); no-op if plain object (15.0.x)
+  const sp: { entityType?: string; action?: string; page?: string } = await Promise.resolve(searchParams);
   const page = Math.max(1, parseInt(sp.page ?? "1"));
   const limit = 50;
 

@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
-export default async function ProjectsPage(props: {
-  searchParams: Promise<{ q?: string; tag?: string; page?: string }>;
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  searchParams: any;
 }) {
-  const sp = await props.searchParams;
+  const sp: { q?: string; tag?: string; page?: string } = await Promise.resolve(searchParams);
   const q = sp.q ?? "";
   const tag = sp.tag;
   const page = Math.max(1, parseInt(sp.page ?? "1"));

@@ -4,15 +4,18 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-export default async function AdminUsersPage(props: {
-  searchParams: Promise<{ page?: string }>;
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  searchParams: any;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
   if (dbUser?.role !== "NETWORK_ADMIN") redirect("/");
 
-  const sp = await props.searchParams;
+  const sp: { page?: string } = await Promise.resolve(searchParams);
   const page = Math.max(1, parseInt(sp.page ?? "1"));
   const limit = 50;
 

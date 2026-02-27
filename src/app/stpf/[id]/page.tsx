@@ -3,10 +3,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-export default async function StpfDetailPage(props: {
-  params: Promise<{ id: string }>;
+export default async function StpfDetailPage({
+  params,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  params: any;
 }) {
-  const { id } = await props.params;
+  const { id } = await Promise.resolve(params) as { id: string };
   const node = await prisma.stpfNode.findUnique({
     where: { id },
     include: {

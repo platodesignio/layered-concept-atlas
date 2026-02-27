@@ -4,11 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 
-export default async function ProjectDetailPage(props: {
-  params: Promise<{ id: string }>;
+export default async function ProjectDetailPage({
+  params,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  params: any;
 }) {
   const session = await auth();
-  const { id } = await props.params;
+  const { id } = await Promise.resolve(params) as { id: string };
   const project = await prisma.project.findFirst({
     where: { OR: [{ id }, { slug: id }], isFrozen: false },
     include: {

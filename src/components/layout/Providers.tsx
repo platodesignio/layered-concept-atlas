@@ -6,15 +6,14 @@ import { useState } from "react";
 import { WagmiProvider, createConfig } from "wagmi";
 import { base } from "wagmi/chains";
 import { http } from "viem";
+import { injected } from "wagmi/connectors";
 
-// wagmi/connectors is NOT imported here at all.
-// Importing it would pull @wagmi/connectors → @walletconnect → pino
-// into the build bundle. Connectors are added lazily on user interaction
-// in wallet/page.tsx instead.
+// @walletconnect/* is stubbed in next.config.mjs so pino never reaches
+// the client bundle. injected() is safe — it has no Node.js dependencies.
 const wagmiConfig = createConfig({
   chains: [base],
   transports: { [base.id]: http() },
-  connectors: [],
+  connectors: [injected()],
   ssr: true,
 });
 

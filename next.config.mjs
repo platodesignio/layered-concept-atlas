@@ -10,29 +10,42 @@ const nextConfig = {
 
   webpack(config, { isServer, webpack }) {
     if (!isServer) {
-      // Replace ALL pino-related modules and @walletconnect/logger with an
-      // empty stub. The regex matches pino, pino/*, pino-pretty, and
-      // @walletconnect/logger (which is the only consumer of pino).
+      // The import chain causing the build failure is:
+      //   wagmi/connectors → @wagmi/connectors/walletConnect
+      //   → @walletconnect/ethereum-provider
+      //   → @walletconnect/universal-provider
+      //   → @walletconnect/logger
+      //   → pino  ← Node.js only, fails in browser bundle
+      //
+      // Strategy: stub out the entire @walletconnect/* namespace and pino/*
+      // with an empty module. This allows wagmi/connectors (and injected())
+      // to be imported normally, while walletConnect() gracefully degrades
+      // to a no-op at build time (it's only called at runtime via onClick).
       config.plugins.push(
         new webpack.NormalModuleReplacementPlugin(
-          /^pino(\/.*)?$/,
+          /node_modules\/@walletconnect\/logger\//,
           emptyModule,
         ),
         new webpack.NormalModuleReplacementPlugin(
-          /^pino-pretty(\/.*)?$/,
+          /node_modules\/@walletconnect\/universal-provider\//,
           emptyModule,
         ),
         new webpack.NormalModuleReplacementPlugin(
-          /^@walletconnect\/logger(\/.*)?$/,
+          /node_modules\/@walletconnect\/ethereum-provider\//,
+          emptyModule,
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+          /node_modules\/pino\//,
+          emptyModule,
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+          /node_modules\/pino-pretty\//,
           emptyModule,
         ),
       );
 
       config.resolve.alias = {
         ...config.resolve.alias,
-        "pino": emptyModule,
-        "pino-pretty": emptyModule,
-        "@walletconnect/logger": emptyModule,
         "@react-native-async-storage/async-storage": false,
         "react-native": false,
         "encoding": false,

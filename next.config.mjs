@@ -2,20 +2,30 @@
 const nextConfig = {
   serverExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
 
-  webpack(config, { isServer }) {
+  webpack(config, { isServer, webpack }) {
     if (!isServer) {
-      // Use alias (stronger than fallback for ESM) to stub out Node.js-only
-      // modules that leak into the client bundle via WalletConnect / MetaMask SDK.
+      // Stub out Node.js-only modules with empty modules so that
+      // pino / @walletconnect/* / react-native never fail client builds.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /^pino$/,
+          require.resolve("./src/lib/empty-module.js"),
+        ),
+        new webpack.NormalModuleReplacementPlugin(
+          /^pino-pretty$/,
+          require.resolve("./src/lib/empty-module.js"),
+        ),
+      );
+
       config.resolve.alias = {
         ...config.resolve.alias,
-        // pino is pulled in by @walletconnect/logger → universal-provider → ethereum-provider
         "pino": false,
         "pino-pretty": false,
-        // React Native modules pulled in by MetaMask SDK / wagmi connectors
         "@react-native-async-storage/async-storage": false,
         "react-native": false,
         "encoding": false,
       };
+
       config.resolve.fallback = {
         ...config.resolve.fallback,
         net: false,
@@ -31,6 +41,7 @@ const nextConfig = {
     }
     return config;
   },
+
   async headers() {
     return [
       {

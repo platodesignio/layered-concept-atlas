@@ -5,7 +5,6 @@ import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { createSiweMessage } from "viem/siwe";
 import { useState } from "react";
-import WalletConnectButton from "@/components/WalletConnectButton";
 
 export default function WalletPage() {
   const { data: session } = useSession();
@@ -66,6 +65,17 @@ export default function WalletPage() {
     }
   };
 
+  // walletConnect is imported lazily inside the click handler so that
+  // pino / @walletconnect/* are NEVER part of the build-time bundle.
+  const handleWalletConnect = async () => {
+    const mod = await import("wagmi/connectors");
+    connect({
+      connector: mod.walletConnect({
+        projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "",
+      }),
+    });
+  };
+
   if (!session) return <div className="max-w-xl mx-auto px-4 py-8"><p>ログインが必要です。</p></div>;
 
   return (
@@ -102,7 +112,12 @@ export default function WalletPage() {
           >
             MetaMask / ブラウザウォレット
           </button>
-          <WalletConnectButton />
+          <button
+            onClick={handleWalletConnect}
+            className="border border-black px-3 py-1 text-sm"
+          >
+            WalletConnect
+          </button>
         </div>
       )}
 

@@ -2,30 +2,32 @@
 const nextConfig = {
   serverExternalPackages: ["pdf-lib", "@prisma/client", "prisma", "pusher", "ably"],
 
-  webpack(config, { isServer, webpack }) {
+  webpack(config, { isServer }) {
     if (!isServer) {
-      // クライアントバンドルでNode.js専用モジュールを解決しない
+      // Use alias (stronger than fallback for ESM) to stub out Node.js-only
+      // modules that leak into the client bundle via WalletConnect / MetaMask SDK.
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        // pino is pulled in by @walletconnect/logger → universal-provider → ethereum-provider
+        "pino": false,
+        "pino-pretty": false,
+        // React Native modules pulled in by MetaMask SDK / wagmi connectors
+        "@react-native-async-storage/async-storage": false,
+        "react-native": false,
+        "encoding": false,
+      };
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        encoding: false,
-        "pino-pretty": false,
-        pino: false,
         net: false,
         tls: false,
         fs: false,
         dns: false,
-        // MetaMask SDK が要求する React Native モジュールをブラウザでは無効化
+        encoding: false,
+        "pino-pretty": false,
+        pino: false,
         "@react-native-async-storage/async-storage": false,
         "react-native": false,
       };
-    }
-    if (isServer) {
-      // サーバーサイドで WalletConnect / MetaMask SDK の IndexedDB 依存を無視
-      config.plugins.push(
-        new webpack.IgnorePlugin({
-          resourceRegExp: /^(idb-keyval|keyvaluestorage-interface|@react-native-async-storage\/async-storage|react-native)$/,
-        })
-      );
     }
     return config;
   },

@@ -4,9 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 
-export default async function AdminUsersPage({
-  searchParams,
-}: {
+export default async function AdminUsersPage(props: {
   searchParams: Promise<{ page?: string }>;
 }) {
   const session = await auth();
@@ -14,7 +12,7 @@ export default async function AdminUsersPage({
   const dbUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { role: true } });
   if (dbUser?.role !== "NETWORK_ADMIN") redirect("/");
 
-  const sp = await searchParams;
+  const sp = await props.searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1"));
   const limit = 50;
 

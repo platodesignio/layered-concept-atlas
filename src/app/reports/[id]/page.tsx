@@ -4,13 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/utils";
 
-export default async function ReportDetailPage({
-  params,
-}: {
+export default async function ReportDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  const { id } = await params;
+  const { id } = await props.params;
   const report = await prisma.report.findUnique({
     where: { id },
     include: {

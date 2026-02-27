@@ -4,13 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 
-export default async function ProjectDetailPage({
-  params,
-}: {
+export default async function ProjectDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  const { id } = await params;
+  const { id } = await props.params;
   const project = await prisma.project.findFirst({
     where: { OR: [{ id }, { slug: id }], isFrozen: false },
     include: {
@@ -77,7 +75,6 @@ export default async function ProjectDetailPage({
         </div>
       )}
 
-      {/* STPF Nodes */}
       <h2 className="font-bold border-b mb-3 pb-1">STPFノード</h2>
       {(["STRUCTURE_ANALYSIS", "THEORY_NODE", "PAPER", "FIELD_IMPLEMENTATION"] as const).map((type) => {
         const nodes = stpfByType[type] ?? [];
@@ -105,7 +102,6 @@ export default async function ProjectDetailPage({
         );
       })}
 
-      {/* Actions */}
       <div className="flex gap-2 mt-4 mb-6">
         <Link href={`/reports/new?projectId=${project.id}`} className="no-underline bg-black text-white px-3 py-1 text-sm">
           + 報告を作成
@@ -131,7 +127,6 @@ export default async function ProjectDetailPage({
         )}
       </div>
 
-      {/* Published Reports */}
       <h2 className="font-bold border-b mb-3 pb-1">公開報告</h2>
       <div className="divide-y">
         {project.reports.map((r) => (
@@ -154,15 +149,7 @@ export default async function ProjectDetailPage({
       )}
 
       <div className="mt-6 border-t pt-4">
-        <Link href={`/api/audit?entityType=project&entityId=${project.id}`} className="text-sm">
-          監査ログ
-        </Link>
-        {" · "}
-        <Link href="#" className="text-sm" onClick={() => {
-          // Flag UI
-        }}>
-          通報
-        </Link>
+        <Link href={`/api/audit?entityType=project&entityId=${project.id}`} className="text-sm">監査ログ</Link>
       </div>
     </div>
   );

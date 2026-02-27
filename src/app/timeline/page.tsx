@@ -17,13 +17,11 @@ const EVENT_LABELS: Record<string, string> = {
   REPORT_REVISED: "報告を改訂",
 };
 
-export default async function TimelinePage({
-  searchParams,
-}: {
+export default async function TimelinePage(props: {
   searchParams: Promise<{ filter?: string; cursor?: string }>;
 }) {
   const session = await auth();
-  const sp = await searchParams;
+  const sp = await props.searchParams;
   const filter = sp.filter ?? "Network";
   const cursor = sp.cursor;
   const limit = 20;
